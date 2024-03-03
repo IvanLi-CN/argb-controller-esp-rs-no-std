@@ -12,7 +12,7 @@ const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
 // global variable ip address
-static NETWORK_CONFIG: Lazy<Mutex<Option<StaticConfigV4>>> = Lazy::new(|| {
+pub static NETWORK_CONFIG: Lazy<Mutex<Option<StaticConfigV4>>> = Lazy::new(|| {
     println!("initializing");
     Mutex::new(None)
 });

@@ -21,11 +21,12 @@ use hal::{
 use static_cell::make_static;
 
 use embassy_net::{Config, Stack, StackResources};
+mod openwrt;
 mod wifi;
-use wifi::{connection, net_task, wifi_task, get_ip_addr};
+use openwrt::netdata_info;
+use wifi::{connection, get_ip_addr, net_task};
 
 use esp_backtrace as _;
-
 #[embassy_executor::task]
 async fn blink(blink_led: &'static mut GpioPin<Unknown, 1>) {
     let mut blink_led = unsafe { blink_led.clone_unchecked() }.into_push_pull_output();
@@ -40,6 +41,7 @@ async fn blink(blink_led: &'static mut GpioPin<Unknown, 1>) {
 #[main]
 async fn main(spawner: Spawner) {
     esp_println::println!("Init!");
+
     let peripherals = Peripherals::take();
     let system = peripherals.SYSTEM.split();
     let clocks: clock::Clocks<'static> = ClockControl::max(system.clock_control).freeze();
@@ -81,14 +83,14 @@ async fn main(spawner: Spawner) {
     ));
 
     spawner.spawn(blink(blink_led)).ok();
-    spawner.spawn(wifi_task(&stack)).ok();
     spawner.spawn(connection(controller)).ok();
     spawner.spawn(net_task(&stack)).ok();
     spawner.spawn(get_ip_addr(&stack)).ok();
+    spawner.spawn(netdata_info(&stack)).ok();
 
     loop {
         led.toggle().unwrap();
         Timer::after(Duration::from_millis(5_00)).await;
-        // esp_println::println!("blink!");
+        esp_println::println!("blink!");
     }
 }
