@@ -31,3 +31,4 @@ embassy-net = { version = "0.4.0", features = [
 ] }
 embedded-io-async = { version = "0.6.0" }
 embedded-svc = { version = "0.27.0", default-features = false, features = [] }
+spin = { version = "0.9.8", features = ["lazy", "portable_atomic"] }

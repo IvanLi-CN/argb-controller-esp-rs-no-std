@@ -22,7 +22,7 @@ use static_cell::make_static;
 
 use embassy_net::{Config, Stack, StackResources};
 mod wifi;
-use wifi::{connection, net_task, wifi_task};
+use wifi::{connection, net_task, wifi_task, get_ip_addr};
 
 use esp_backtrace as _;
 
@@ -84,10 +84,11 @@ async fn main(spawner: Spawner) {
     spawner.spawn(wifi_task(&stack)).ok();
     spawner.spawn(connection(controller)).ok();
     spawner.spawn(net_task(&stack)).ok();
+    spawner.spawn(get_ip_addr(&stack)).ok();
 
     loop {
         led.toggle().unwrap();
         Timer::after(Duration::from_millis(5_00)).await;
-        esp_println::println!("blink!");
+        // esp_println::println!("blink!");
     }
 }

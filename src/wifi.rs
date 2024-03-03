@@ -1,36 +1,34 @@
-use embassy_net::{tcp::TcpSocket, Ipv4Address, Stack} ;
+
+use embassy_net::{tcp::TcpSocket, Ipv4Address, Stack, StaticConfigV4};
 
 use embassy_time::{Duration, Timer};
 use embedded_svc::wifi::{ClientConfiguration, Configuration, Wifi};
 use esp_backtrace as _;
 use esp_println::println;
 use esp_wifi::wifi::{WifiController, WifiDevice, WifiEvent, WifiStaDevice, WifiState};
+use spin::{Lazy, Mutex};
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
+// global variable ip address
+static NETWORK_CONFIG: Lazy<Mutex<Option<StaticConfigV4>>> = Lazy::new(|| {
+    println!("initializing");
+    Mutex::new(None)
+});
+
 #[embassy_executor::task]
 pub async fn wifi_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>) {
-     let mut rx_buffer = [0; 4096];
+    let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
     loop {
-        if stack.is_link_up() {
-            break;
+        if  NETWORK_CONFIG.lock().is_none() {
+            println!("Waiting for network config...");
+            Timer::after(Duration::from_millis(1_000)).await;
+            continue;
         }
-        Timer::after(Duration::from_millis(500)).await;
-    }
 
-    println!("Waiting to get IP address...");
-    loop {
-        if let Some(config) = stack.config_v4() {
-            println!("Got IP: {}", config.address);
-            break;
-        }
-        Timer::after(Duration::from_millis(500)).await;
-    }
-
-    loop {
         Timer::after(Duration::from_millis(1_000)).await;
 
         let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
@@ -105,6 +103,32 @@ pub async fn connection(mut controller: WifiController<'static>) {
                 Timer::after(Duration::from_millis(5000)).await
             }
         }
+    }
+}
+
+#[embassy_executor::task]
+pub async fn get_ip_addr(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>) {
+    loop {
+        if stack.is_link_up() && NETWORK_CONFIG.lock().is_none() {
+            println!("Waiting to get IP address...");
+            loop {
+                if let Some(config) = stack.config_v4() {
+                    println!("Got IP: {}", config.address);
+                    let mut global_config = NETWORK_CONFIG.lock();
+                    *global_config = Some(config);
+                    break;
+                }
+                Timer::after(Duration::from_millis(500)).await;
+            }
+        }
+
+        if !stack.is_link_up() && NETWORK_CONFIG.lock().is_some() {
+            println!("Link down or config down, reset NETWORK_CONFIG to None");
+            let mut global_config = NETWORK_CONFIG.lock();
+            *global_config = None;
+        }
+
+        Timer::after(Duration::from_millis(500)).await;
     }
 }
 
