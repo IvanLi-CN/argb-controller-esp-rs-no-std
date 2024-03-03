@@ -38,17 +38,18 @@ pub async fn netdata_info(stack: &'static Stack<WifiDevice<'static, WifiStaDevic
 
         let mut request = client.request(Method::GET, &url).await.unwrap();
         let response = request.send(&mut header_rx_buf).await.unwrap();
-        let mut reader = response
-            .body().reader();
+        let mut reader = response.body().reader();
 
         // read body
-        while reader
-            .read(&mut body_rx_buf)
-            .await
-            .unwrap()
-            != 0
-        {
-            println!("{}", core::str::from_utf8(&body_rx_buf).unwrap());
+        while let Ok(bytes_read) = reader.read(&mut body_rx_buf).await {
+            if bytes_read == 0 {
+                break;
+            }
+
+            println!(
+                "{}",
+                core::str::from_utf8(&body_rx_buf[..bytes_read]).unwrap()
+            );
         }
 
         Timer::after(Duration::from_millis(3000)).await;
