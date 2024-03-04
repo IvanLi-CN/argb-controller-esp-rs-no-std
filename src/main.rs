@@ -23,6 +23,7 @@ use static_cell::make_static;
 use embassy_net::{Config, Stack, StackResources};
 mod openwrt;
 mod wifi;
+mod openwrt_types;
 use openwrt::netdata_info;
 use wifi::{connection, get_ip_addr, net_task};
 
@@ -91,6 +92,6 @@ async fn main(spawner: Spawner) {
     loop {
         led.toggle().unwrap();
         Timer::after(Duration::from_millis(5_00)).await;
-        esp_println::println!("blink!");
+        // esp_println::println!("blink!");
     }
 }

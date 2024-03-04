@@ -5,7 +5,9 @@
     "riscv32imc-unknown-none-elf"
   ],
   "cSpell.words": [
+    "heapless",
     "netdata",
+    "openwrt",
     "reqwless"
   ]
 }
