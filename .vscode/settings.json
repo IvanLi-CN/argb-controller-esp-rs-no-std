@@ -9,5 +9,10 @@
     "netdata",
     "openwrt",
     "reqwless"
+  ],
+  "rust-analyzer.linkedProjects": [
+    "./Cargo.toml",
+    "./Cargo.toml",
+    "./st7735/Cargo.toml"
   ]
 }
