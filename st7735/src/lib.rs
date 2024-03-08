@@ -10,7 +10,7 @@ use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::spi::SpiDevice;
 
 /// 128px x 160px screen with 16 bits (2 bytes) per pixel
-const BUF_SIZE: usize = 128 * 160 * 2;
+const BUF_SIZE: usize = 80 * 160 * 2;
 
 /// Async ST7735 LCD display driver.
 pub struct ST7735IF<SPI, DC, RST>

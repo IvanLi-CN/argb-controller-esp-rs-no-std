@@ -6,19 +6,17 @@ use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Delay, Duration, Timer};
-use embedded_graphics::draw_target::DrawTarget;
-use embedded_graphics::geometry::Point;
-use embedded_graphics::image::{Image, ImageRaw, ImageRawLE};
-use embedded_graphics::pixelcolor::{Rgb565, RgbColor};
-use embedded_graphics::Drawable;
+use embassy_time::{Duration, Timer};
 use esp_backtrace as _;
 use esp_backtrace as _;
 use esp_println::println;
 use esp_wifi::wifi::WifiStaDevice;
 use esp_wifi::{initialize, EspWifiInitFor};
 use hal::dma::DmaPriority;
-use hal::gdma::Gdma;
+use hal::gdma::{Channel0, Gdma};
+use hal::peripherals::SPI2;
+use hal::spi::master::dma::SpiDma;
+use hal::spi::FullDuplexMode;
 use hal::{
     clock::{self, ClockControl},
     embassy,
@@ -40,6 +38,7 @@ use embassy_net::{Config, Stack, StackResources};
 mod openwrt;
 mod openwrt_types;
 mod wifi;
+mod display;
 use openwrt::netdata_info;
 use wifi::{connection, get_ip_addr, net_task};
 
@@ -108,7 +107,7 @@ async fn main(spawner: Spawner) {
     let sdo = io.pins.gpio10.into_push_pull_output();
     let descriptors = make_static!([0u32; 8 * 3]);
     let rx_descriptors = make_static!([0u32; 8 * 3]);
-    let spi = Spi::new(peripherals.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks)
+    let spi: SpiDma<'_, SPI2, Channel0, FullDuplexMode> = Spi::new(peripherals.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks)
         .with_sck(sck)
         .with_mosi(sdo)
         .with_dma(dma_channel.configure(
@@ -120,17 +119,18 @@ async fn main(spawner: Spawner) {
     let rst = io.pins.gpio3.into_push_pull_output();
     let dc = io.pins.gpio4.into_push_pull_output();
     let lcd_cs = io.pins.gpio5.into_push_pull_output();
-    // let spi = make_static!(spi);
     let spi: Mutex<NoopRawMutex, _> = Mutex::new(spi);
-    let spi_dev = SpiDevice::new(&spi, lcd_cs);
+    let spi = make_static!(spi);
+    let spi_dev: SpiDevice<
+            '_,
+            NoopRawMutex,
+            _,
+            GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 5>,
+        > = SpiDevice::new(spi, lcd_cs);
+    // let spi_dev = make_static!(spi_dev);
     // let rst = make_static!(rst);
     // let dc = make_static!(dc);
 
-    spawner.spawn(blink(blink_led)).ok();
-    spawner.spawn(connection(controller)).ok();
-    spawner.spawn(net_task(&stack)).ok();
-    spawner.spawn(get_ip_addr(&stack)).ok();
-    spawner.spawn(netdata_info(&stack)).ok();
 
     let rgb = false;
     let inverted = false;
@@ -138,8 +138,16 @@ async fn main(spawner: Spawner) {
     let height = 80;
 
     println!("lcd init...");
-
-    let mut display = ST7735::new(
+    let display: ST7735<
+        SpiDevice<
+            '_,
+            NoopRawMutex,
+            SpiDma<'static, SPI2, Channel0, FullDuplexMode>,
+            GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 5>,
+        >,
+        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 4>,
+        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 3>,
+    > = ST7735::new(
         spi_dev,
         dc,
         rst,
@@ -151,29 +159,17 @@ async fn main(spawner: Spawner) {
         width,
         height,
     );
-    display.init(&mut Delay).await.unwrap();
-    display.set_offset(0, 24);
-    display.clear(Rgb565::BLUE).unwrap();
+    let display = make_static!(display);
 
-    let image_raw: ImageRawLE<Rgb565> = ImageRaw::new(include_bytes!("./assets/ferris.raw"), 86);
-    let image = Image::new(&image_raw, Point::new(32, 8));
 
-    println!("lcd test have done.");
-
-    let mut color_r = 0u8;
-    let mut color_g = 0u8;
-    let mut color_b = 0u8;
+    spawner.spawn(blink(blink_led)).ok();
+    spawner.spawn(connection(controller)).ok();
+    spawner.spawn(net_task(&stack)).ok();
+    spawner.spawn(display::init_display(display)).ok();
+    spawner.spawn(get_ip_addr(&stack)).ok();
+    spawner.spawn(netdata_info(&stack)).ok();
 
     loop {
-        color_r = color_r.wrapping_add(29);
-        color_g = color_g.wrapping_add(33);
-        color_b = color_b.wrapping_add(37);
-        let color = Rgb565::new(color_r, color_g, color_b);
-        Timer::after(Duration::from_millis(1_000)).await;
-        display.flush().await.unwrap();
-        display.clear(color).unwrap();
-        Timer::after(Duration::from_millis(1_000)).await;
-        image.draw(&mut display).unwrap();
-        display.flush().await.unwrap();
+        Timer::after(Duration::from_millis(1000)).await;
     }
 }
