@@ -56,12 +56,13 @@ async fn blink(blink_led: &'static mut GpioPin<Unknown, 1>) {
 
 #[main]
 async fn main(spawner: Spawner) {
-    esp_println::println!("Init!");
+    esp_println::println!("Init main");
+
+    // Basic stuff
 
     let peripherals = Peripherals::take();
     let system = peripherals.SYSTEM.split();
     let clocks: clock::Clocks<'static> = ClockControl::max(system.clock_control).freeze();
-    // let clocks: &'static _ = make_static!(clocks);
     let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
 
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
@@ -71,6 +72,9 @@ async fn main(spawner: Spawner) {
     embassy::init(&clocks, timer_group0);
 
     let timer = hal::systimer::SystemTimer::new(peripherals.SYSTIMER).alarm0;
+
+    // Wi-Fi
+
     let init = initialize(
         EspWifiInitFor::Wifi,
         timer,
@@ -79,9 +83,6 @@ async fn main(spawner: Spawner) {
         &clocks,
     )
     .unwrap();
-
-    // Wi-Fi
-
     let wifi = peripherals.WIFI;
     let (wifi_interface, controller) =
         esp_wifi::wifi::new_with_mode(&init, wifi, WifiStaDevice).unwrap();
@@ -116,24 +117,21 @@ async fn main(spawner: Spawner) {
             rx_descriptors,
             DmaPriority::Priority0,
         ));
+    let spi: Mutex<NoopRawMutex, _> = Mutex::new(spi);
+    let spi = make_static!(spi);
+
+    // Display
+
     let rst = io.pins.gpio3.into_push_pull_output();
     let dc = io.pins.gpio4.into_push_pull_output();
     let lcd_cs = io.pins.gpio5.into_push_pull_output();
-    let spi: Mutex<NoopRawMutex, _> = Mutex::new(spi);
-    let spi = make_static!(spi);
     let spi_dev: SpiDevice<
             '_,
             NoopRawMutex,
             _,
             GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 5>,
         > = SpiDevice::new(spi, lcd_cs);
-    // let spi_dev = make_static!(spi_dev);
-    // let rst = make_static!(rst);
-    // let dc = make_static!(dc);
 
-
-    let rgb = false;
-    let inverted = false;
     let width = 160;
     let height = 80;
 
@@ -152,8 +150,8 @@ async fn main(spawner: Spawner) {
         dc,
         rst,
         st7735::Config {
-            rgb,
-            inverted,
+            rgb: false,
+            inverted: false,
             orientation: st7735::Orientation::Landscape,
         },
         width,
