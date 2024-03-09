@@ -1,13 +1,15 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
+#![feature(const_refs_to_static)]
+#![feature(const_maybe_uninit_write)]
+#![feature(const_mut_refs)]
 
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
-use esp_backtrace as _;
 use esp_backtrace as _;
 use esp_println::println;
 use esp_wifi::wifi::WifiStaDevice;
@@ -39,6 +41,7 @@ mod openwrt;
 mod openwrt_types;
 mod wifi;
 mod display;
+mod bus;
 use openwrt::netdata_info;
 use wifi::{connection, get_ip_addr, net_task};
 
@@ -160,10 +163,10 @@ async fn main(spawner: Spawner) {
     let display = make_static!(display);
 
 
+    spawner.spawn(display::init_display(display)).ok();
     spawner.spawn(blink(blink_led)).ok();
     spawner.spawn(connection(controller)).ok();
     spawner.spawn(net_task(&stack)).ok();
-    spawner.spawn(display::init_display(display)).ok();
     spawner.spawn(get_ip_addr(&stack)).ok();
     spawner.spawn(netdata_info(&stack)).ok();
 

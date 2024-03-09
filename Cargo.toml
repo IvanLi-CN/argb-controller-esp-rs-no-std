@@ -48,3 +48,5 @@ embedded-graphics = "0.8.1"
 embassy-embedded-hal = "0.1.0"
 embassy-sync = "0.5.0"
 st7735 = { path = "./st7735" }
+numtoa = "0.2.4"
+libm = "0.2.8"
