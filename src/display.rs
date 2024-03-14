@@ -7,6 +7,7 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Delay, Instant, Timer};
 use embedded_graphics::image::{Image, ImageRaw, ImageRawLE};
+use embedded_graphics::mono_font::iso_8859_1::FONT_10X20;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
 use embedded_graphics::text::renderer::CharacterStyle;
@@ -76,7 +77,7 @@ pub(crate) async fn init_display(display: &'static mut DisplayST7735) {
 
 enum DisplayPage<'a> {
     Init,
-    Connecting(WiFiConnectingPage),
+    Connecting(WiFiConnectingPage<'a>),
     NetworkSpeed(NetDataTrafficSpeedPage<'a>),
 }
 
@@ -139,27 +140,48 @@ trait GUIPageFrame {
     fn frame(&mut self, display: &mut DisplayST7735) -> impl Future<Output = ()>;
 }
 
-struct WiFiConnectingPage {
+struct WiFiConnectingPage<'a> {
     animation_frame_index: u8,
     last_draw_time: Instant,
+    character_style: MonoTextStyle<'a, Rgb565>,
+    text_style: TextStyle,
+    string: String<20>,
 }
 
-impl WiFiConnectingPage {
+impl<'a> WiFiConnectingPage<'a> {
     pub fn new() -> Self {
         Self {
             animation_frame_index: 0,
             last_draw_time: Instant::MIN,
+            character_style: MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE),
+            text_style: TextStyleBuilder::new()
+                .baseline(Baseline::Middle)
+                .alignment(Alignment::Left)
+                .build(),
+            string: String::new(),
         }
     }
 }
 
-impl GUIPageFrame for WiFiConnectingPage {
+impl<'a> GUIPageFrame for WiFiConnectingPage<'a> {
     async fn frame(&mut self, display: &mut DisplayST7735) {
         if self.last_draw_time.elapsed().as_millis() < 200 {
             return;
         }
 
+        display.clear(Rgb565::BLACK).unwrap();
+
         self.last_draw_time = Instant::now();
+
+
+        self.string.clear();
+        self.string.push_str("Connecting").unwrap();
+
+        for _ in 0..self.animation_frame_index {
+            self.string
+                .push_str( ".")
+                .unwrap();
+        }
 
         let image_raw: ImageRawLE<Rgb565> = match self.animation_frame_index {
             0 => {
@@ -179,8 +201,18 @@ impl GUIPageFrame for WiFiConnectingPage {
                 ImageRaw::new(include_bytes!("./assets/ci_wifi-high.raw"), 32)
             }
         };
-        let image = Image::new(&image_raw, Point::new(64, 24));
+        let image = Image::new(&image_raw, Point::new(0, 24));
         image.draw(display).unwrap();
+
+        Text::with_text_style(
+            self.string.as_str(),
+            Point::new(30, 40),
+            self.character_style,
+            self.text_style,
+        )
+        .draw(display)
+        .unwrap();
+
         display.flush().await.unwrap();
     }
 }
@@ -198,7 +230,7 @@ impl<'a> NetDataTrafficSpeedPage<'a> {
         Self {
             character_style: MonoTextStyle::new(&SEVENT_SEGMENT_FONT, Rgb565::CYAN),
             text_style: TextStyleBuilder::new()
-                .baseline(Baseline::Bottom)
+                .baseline(Baseline::Middle)
                 .alignment(Alignment::Right)
                 .build(),
             prev_wan_speed: NetDataTrafficSpeed::default(),
@@ -232,14 +264,12 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
             .push_str(curr_wan_speed.up.numtoa_str(10, &mut self.str_buff))
             .unwrap();
 
-        println!("curr_wan_speed: {}", self.string);
         Text::with_text_style(
             self.string.as_str(),
-            display.bounding_box().center(),
+            Point::new(160, 20),
             self.character_style,
             self.text_style,
         )
-        .translate(Point::new(80, 0))
         .draw(display)
         .unwrap();
 
@@ -252,14 +282,12 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
             .push_str(curr_wan_speed.down.numtoa_str(10, &mut self.str_buff))
             .unwrap();
 
-        println!("curr_wan_speed: {}", self.string);
         Text::with_text_style(
             self.string.as_str(),
-            display.bounding_box().center(),
+            Point::new(160, 60),
             self.character_style,
             self.text_style,
         )
-        .translate(Point::new(80, 40))
         .draw(display)
         .unwrap();
 
