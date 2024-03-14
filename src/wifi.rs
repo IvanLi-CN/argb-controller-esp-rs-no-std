@@ -1,18 +1,21 @@
 use embassy_net::{tcp::TcpSocket, Ipv4Address, Stack, StaticConfigV4};
 
+use crate::bus::{WiFiConnectStatus, WIFI_CONNECT_STATUS};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Duration, Timer};
-use embedded_svc::wifi::{ClientConfiguration, Configuration, Wifi};
 use esp_backtrace as _;
 use esp_println::println;
-use esp_wifi::wifi::{WifiController, WifiDevice, WifiEvent, WifiStaDevice, WifiState};
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use crate::bus::{WiFiConnectStatus, WIFI_CONNECT_STATUS};
+use esp_wifi::wifi::{
+    ClientConfiguration, Configuration,
+    WifiController, WifiDevice, WifiEvent, WifiStaDevice, WifiState,
+};
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
 // global variable ip address
-pub static NETWORK_CONFIG: Mutex<CriticalSectionRawMutex, Option<StaticConfigV4>> = Mutex::new(None);
+pub static NETWORK_CONFIG: Mutex<CriticalSectionRawMutex, Option<StaticConfigV4>> =
+    Mutex::new(None);
 
 #[embassy_executor::task]
 pub async fn wifi_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>) {

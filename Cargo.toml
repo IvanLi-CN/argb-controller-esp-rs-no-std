@@ -6,12 +6,13 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-hal = { package = "esp32c3-hal", version = "0.15.1", features = [
+hal = { package = "esp-hal", version = "0.16.1", features = [
+  "esp32c3",
   "embassy",
   "async",
   "embassy-time-timg0",
-  "embassy-executor-thread",
-  "eh1"
+  "embassy-integrated-timers",
+  "embassy-executor-thread"
 ] }
 esp-backtrace = { version = "0.11.1", features = [
   "esp32c3",
@@ -20,7 +21,7 @@ esp-backtrace = { version = "0.11.1", features = [
   "println",
 ] }
 esp-println = { version = "0.9.1", features = ["esp32c3"] }
-esp-wifi = { version = "0.3.0", features = [
+esp-wifi = { version = "0.4.0", features = [
   "esp32c3",
   "async",
   "wifi",
@@ -29,7 +30,8 @@ esp-wifi = { version = "0.3.0", features = [
 ] }
 
 embassy-executor = { version = "0.5.0", features = ["nightly"] }
-embassy-time = { version = "0.3.0", features = [] }
+embassy-time = { version = "0.3.0", features = [
+] }
 embassy-net = { version = "0.4.0", features = [
   "tcp",
   "dhcpv4",
@@ -37,8 +39,7 @@ embassy-net = { version = "0.4.0", features = [
   "dns",
   "medium-ethernet",
 ] }
-embedded-io-async = { version = "0.6.0" }
-embedded-svc = { version = "0.27.0", default-features = false, features = [] }
+embedded-io-async = { version = "0.6.1" }
 embedded-graphics = "0.8.1"
 embassy-embedded-hal = "0.1.0"
 embassy-sync = "0.5.0"

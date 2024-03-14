@@ -16,7 +16,7 @@ use embedded_graphics::{
     text::{Alignment, Baseline, Text, TextStyleBuilder},
 };
 use esp_println::println;
-use hal::gdma::Channel0;
+use hal::dma::Channel0;
 use hal::gpio::GpioPin;
 use hal::peripherals::SPI2;
 use hal::spi::master::dma::SpiDma;

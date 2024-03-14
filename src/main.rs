@@ -14,8 +14,9 @@ use esp_backtrace as _;
 use esp_println::println;
 use esp_wifi::wifi::WifiStaDevice;
 use esp_wifi::{initialize, EspWifiInitFor};
+use hal::dma::{Channel0, Dma};
 use hal::dma::DmaPriority;
-use hal::gdma::{Channel0, Gdma};
+use hal::dma_descriptors;
 use hal::peripherals::SPI2;
 use hal::spi::master::dma::SpiDma;
 use hal::spi::FullDuplexMode;
@@ -37,11 +38,11 @@ use st7735::ST7735;
 use static_cell::make_static;
 
 use embassy_net::{Config, Stack, StackResources};
+mod bus;
+mod display;
 mod openwrt;
 mod openwrt_types;
 mod wifi;
-mod display;
-mod bus;
 use openwrt::netdata_info;
 use wifi::{connection, get_ip_addr, net_task};
 
@@ -102,24 +103,27 @@ async fn main(spawner: Spawner) {
 
     // DMA
 
-    let dma = Gdma::new(peripherals.DMA);
+    let dma = Dma::new(peripherals.DMA);
     let dma_channel = dma.channel0;
 
     // SPI
 
     let sck = io.pins.gpio8.into_push_pull_output();
     let sdo = io.pins.gpio10.into_push_pull_output();
-    let descriptors = make_static!([0u32; 8 * 3]);
-    let rx_descriptors = make_static!([0u32; 8 * 3]);
-    let spi: SpiDma<'_, SPI2, Channel0, FullDuplexMode> = Spi::new(peripherals.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks)
-        .with_sck(sck)
-        .with_mosi(sdo)
-        .with_dma(dma_channel.configure(
-            false,
-            descriptors,
-            rx_descriptors,
-            DmaPriority::Priority0,
-        ));
+    let (tx_descriptors,  rx_descriptors) = dma_descriptors!(32000, 4096);
+    let tx_descriptors = make_static!(tx_descriptors);
+    let rx_descriptors = make_static!(rx_descriptors);
+
+    let spi: SpiDma<'_, SPI2, Channel0, FullDuplexMode> =
+        Spi::new(peripherals.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks)
+            .with_sck(sck)
+            .with_mosi(sdo)
+            .with_dma(dma_channel.configure(
+                false,
+                tx_descriptors,
+                rx_descriptors,
+                DmaPriority::Priority0,
+            ));
     let spi: Mutex<NoopRawMutex, _> = Mutex::new(spi);
     let spi = make_static!(spi);
 
@@ -129,11 +133,11 @@ async fn main(spawner: Spawner) {
     let dc = io.pins.gpio4.into_push_pull_output();
     let lcd_cs = io.pins.gpio5.into_push_pull_output();
     let spi_dev: SpiDevice<
-            '_,
-            NoopRawMutex,
-            _,
-            GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 5>,
-        > = SpiDevice::new(spi, lcd_cs);
+        '_,
+        NoopRawMutex,
+        _,
+        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 5>,
+    > = SpiDevice::new(spi, lcd_cs);
 
     let width = 160;
     let height = 80;
@@ -161,7 +165,6 @@ async fn main(spawner: Spawner) {
         height,
     );
     let display = make_static!(display);
-
 
     spawner.spawn(display::init_display(display)).ok();
     spawner.spawn(blink(blink_led)).ok();
