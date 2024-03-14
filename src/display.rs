@@ -1,12 +1,16 @@
+use crate::bus::{
+    NetDataTrafficSpeed, WiFiConnectStatus, NET_DATA_TRAFFIC_SPEED, WIFI_CONNECT_STATUS,
+};
+use core::future::Future;
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
-use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::pubsub::WaitResult;
-use embassy_time::Delay;
+use embassy_sync::mutex::Mutex;
+use embassy_time::{Delay, Instant, Timer};
 use embedded_graphics::image::{Image, ImageRaw, ImageRawLE};
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
 use embedded_graphics::text::renderer::CharacterStyle;
+use embedded_graphics::text::TextStyle;
 use embedded_graphics::{
     mono_font::{mapping::StrGlyphMapping, DecorationDimensions, MonoFont, MonoTextStyle},
     text::{Alignment, Baseline, Text, TextStyleBuilder},
@@ -20,18 +24,7 @@ use hal::spi::FullDuplexMode;
 use heapless::String;
 use numtoa::NumToA;
 use st7735::ST7735;
-
-use crate::bus::NET_DATA_TRAFFIC_SPEED_PUB_SUB;
-
-const SEVENT_SEGMENT_FONT: MonoFont = MonoFont {
-    image: ImageRaw::new(include_bytes!("./assets/seven-segment-font.raw"), 224),
-    glyph_mapping: &StrGlyphMapping::new("0123456789", 0),
-    character_size: Size::new(22, 40),
-    character_spacing: 4,
-    baseline: 7,
-    underline: DecorationDimensions::default_underline(40),
-    strikethrough: DecorationDimensions::default_strikethrough(40),
-};
+use static_cell::make_static;
 
 pub(crate) type DisplayST7735 = ST7735<
     SpiDevice<
@@ -44,98 +37,232 @@ pub(crate) type DisplayST7735 = ST7735<
     GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 3>,
 >;
 
+const SEVENT_SEGMENT_FONT: MonoFont = MonoFont {
+    image: ImageRaw::new(include_bytes!("./assets/seven-segment-font.raw"), 224),
+    glyph_mapping: &StrGlyphMapping::new("0123456789", 0),
+    character_size: Size::new(22, 40),
+    character_spacing: 4,
+    baseline: 7,
+    underline: DecorationDimensions::default_underline(40),
+    strikethrough: DecorationDimensions::default_strikethrough(40),
+};
+
 #[embassy_executor::task]
 pub(crate) async fn init_display(display: &'static mut DisplayST7735) {
-    display.init(&mut Delay).await.unwrap();
-    display.set_offset(0, 24);
-    display.clear(Rgb565::BLACK).unwrap();
-    display.flush().await.unwrap();
+    let mut gui: GUI<'static> = GUI::new(display);
 
-    let image_raw: ImageRawLE<Rgb565> = ImageRaw::new(include_bytes!("./assets/rust_logo.bin"), 64);
-    let image = Image::new(&image_raw, Point::new((160 - 64) / 2, (80 - 64) / 2));
+    gui.init().await;
 
-    image.draw(display).unwrap();
-    display.flush().await.unwrap();
+    let gui = make_static!(Mutex::<NoopRawMutex, GUI<'static>>::new(gui));
 
-    println!("lcd test have done");
-
-    let spawner = Spawner::for_current_executor().await;
-    spawner.spawn(network_speed(display)).unwrap();
-}
-
-#[embassy_executor::task]
-pub(crate) async fn network_speed(display: &'static mut DisplayST7735) {
-    let mut character_style = MonoTextStyle::new(&SEVENT_SEGMENT_FONT, Rgb565::CYAN);
-    let text_style = TextStyleBuilder::new()
-        .baseline(Baseline::Bottom)
-        .alignment(Alignment::Right)
-        .build();
-
-    let mut subscriber: embassy_sync::pubsub::Subscriber<
-        '_,
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        crate::bus::NetDataTrafficSpeed,
-        4,
-        4,
-        1,
-    > = NET_DATA_TRAFFIC_SPEED_PUB_SUB.subscriber().unwrap();
-    let mut str_buff = [0u8; 20];
-    let mut string: String<20> = String::new();
-
-    println!("start network speed task");
+    let mut wifi_status: WiFiConnectStatus;
 
     loop {
-        let msg = subscriber.next_message().await;
+        let wifi_status_guard = WIFI_CONNECT_STATUS.lock().await;
+        wifi_status = *wifi_status_guard;
+        drop(wifi_status_guard);
 
-        match msg {
-            WaitResult::Lagged(lag) => {
-                println!("lagged {}", lag);
-            }
-            WaitResult::Message(speed) => {
-                display.clear(Rgb565::BLACK).unwrap();
+        let mut gui = gui.lock().await;
+        match wifi_status {
+            WiFiConnectStatus::Connecting => gui.wifi_connecting_display().await,
+            WiFiConnectStatus::Connected => gui.network_speed().await,
+            _ => {}
+        };
+        drop(gui);
 
-                // UP
+        Timer::after(embassy_time::Duration::from_millis(10)).await;
+    }
+}
 
-                character_style.set_text_color(Some(Rgb565::CSS_ORANGE_RED));
+enum DisplayPage<'a> {
+    Init,
+    Connecting(WiFiConnectingPage),
+    NetworkSpeed(NetDataTrafficSpeedPage<'a>),
+}
 
-                string.clear();
-                string
-                    .push_str(speed.up.numtoa_str(10, &mut str_buff))
-                    .unwrap();
+struct GUI<'a> {
+    display: &'a mut DisplayST7735,
+    page: DisplayPage<'a>,
+}
 
-                println!("speed: {}", string);
-                Text::with_text_style(
-                    string.as_str(),
-                    display.bounding_box().center(),
-                    character_style,
-                    text_style,
-                )
-                .translate(Point::new(80, 0))
-                .draw(display)
-                .unwrap();
-
-                // DOWN
-
-                character_style.set_text_color(Some(Rgb565::CYAN));
-
-                string.clear();
-                string
-                    .push_str(speed.down.numtoa_str(10, &mut str_buff))
-                    .unwrap();
-
-                println!("speed: {}", string);
-                Text::with_text_style(
-                    string.as_str(),
-                    display.bounding_box().center(),
-                    character_style,
-                    text_style,
-                )
-                .translate(Point::new(80, 40))
-                .draw(display)
-                .unwrap();
-
-                display.flush().await.unwrap();
-            }
+impl<'a> GUI<'a> {
+    fn new(display: &'a mut DisplayST7735) -> Self {
+        Self {
+            display,
+            page: DisplayPage::Init,
         }
+    }
+
+    pub async fn init(&mut self) {
+        self.display.init(&mut Delay).await.unwrap();
+        self.display.set_offset(0, 24);
+        self.display.clear(Rgb565::BLACK).unwrap();
+        self.display.flush().await.unwrap();
+
+        let image_raw: ImageRawLE<Rgb565> =
+            ImageRaw::new(include_bytes!("./assets/simple-icons_espressif.raw"), 24);
+        let image = Image::new(&image_raw, Point::new(160 - 60, 80 - 24 - 8));
+        image.draw(self.display).unwrap();
+
+        let image_raw: ImageRawLE<Rgb565> = ImageRaw::new(
+            include_bytes!("./assets/vscode-icons_file-type-rust.raw"),
+            24,
+        );
+        let image = Image::new(&image_raw, Point::new(160 - 24 - 8, 80 - 24 - 8));
+        image.draw(self.display).unwrap();
+
+        self.display.flush().await.unwrap();
+    }
+
+    pub async fn wifi_connecting_display(&mut self) {
+        if !matches!(self.page, DisplayPage::Connecting(_)) {
+            self.page = DisplayPage::Connecting(WiFiConnectingPage::new());
+        }
+
+        if let DisplayPage::Connecting(ref mut page) = self.page {
+            page.frame(&mut self.display).await;
+        }
+    }
+
+    pub async fn network_speed(&mut self) {
+        if !matches!(self.page, DisplayPage::NetworkSpeed(_)) {
+            self.page = DisplayPage::NetworkSpeed(NetDataTrafficSpeedPage::new());
+        }
+
+        if let DisplayPage::NetworkSpeed(ref mut page) = self.page {
+            page.frame(&mut self.display).await;
+        }
+    }
+}
+
+trait GUIPageFrame {
+    fn frame(&mut self, display: &mut DisplayST7735) -> impl Future<Output = ()>;
+}
+
+struct WiFiConnectingPage {
+    animation_frame_index: u8,
+    last_draw_time: Instant,
+}
+
+impl WiFiConnectingPage {
+    pub fn new() -> Self {
+        Self {
+            animation_frame_index: 0,
+            last_draw_time: Instant::MIN,
+        }
+    }
+}
+
+impl GUIPageFrame for WiFiConnectingPage {
+    async fn frame(&mut self, display: &mut DisplayST7735) {
+        if self.last_draw_time.elapsed().as_millis() < 200 {
+            return;
+        }
+
+        self.last_draw_time = Instant::now();
+
+        let image_raw: ImageRawLE<Rgb565> = match self.animation_frame_index {
+            0 => {
+                self.animation_frame_index = 1;
+                ImageRaw::new(include_bytes!("./assets/ci_wifi-none.raw"), 32)
+            }
+            1 => {
+                self.animation_frame_index = 2;
+                ImageRaw::new(include_bytes!("./assets/ci_wifi-low.raw"), 32)
+            }
+            2 => {
+                self.animation_frame_index = 3;
+                ImageRaw::new(include_bytes!("./assets/ci_wifi-medium.raw"), 32)
+            }
+            _ => {
+                self.animation_frame_index = 0;
+                ImageRaw::new(include_bytes!("./assets/ci_wifi-high.raw"), 32)
+            }
+        };
+        let image = Image::new(&image_raw, Point::new(64, 24));
+        image.draw(display).unwrap();
+        display.flush().await.unwrap();
+    }
+}
+
+struct NetDataTrafficSpeedPage<'a> {
+    character_style: MonoTextStyle<'a, Rgb565>,
+    text_style: TextStyle,
+    prev_wan_speed: NetDataTrafficSpeed,
+    str_buff: [u8; 20],
+    string: String<20>,
+}
+
+impl<'a> NetDataTrafficSpeedPage<'a> {
+    pub fn new() -> Self {
+        Self {
+            character_style: MonoTextStyle::new(&SEVENT_SEGMENT_FONT, Rgb565::CYAN),
+            text_style: TextStyleBuilder::new()
+                .baseline(Baseline::Bottom)
+                .alignment(Alignment::Right)
+                .build(),
+            prev_wan_speed: NetDataTrafficSpeed::default(),
+            str_buff: [0u8; 20],
+            string: String::new(),
+        }
+    }
+}
+
+impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
+    async fn frame(&mut self, display: &mut DisplayST7735) {
+        let curr_wan_speed_guard = NET_DATA_TRAFFIC_SPEED.lock().await;
+        let curr_wan_speed = *curr_wan_speed_guard;
+
+        if self.prev_wan_speed == curr_wan_speed {
+            return;
+        }
+
+        self.prev_wan_speed = curr_wan_speed;
+        drop(curr_wan_speed_guard);
+
+        display.clear(Rgb565::BLACK).unwrap();
+
+        // UP
+
+        self.character_style
+            .set_text_color(Some(Rgb565::CSS_ORANGE_RED));
+
+        self.string.clear();
+        self.string
+            .push_str(curr_wan_speed.up.numtoa_str(10, &mut self.str_buff))
+            .unwrap();
+
+        println!("curr_wan_speed: {}", self.string);
+        Text::with_text_style(
+            self.string.as_str(),
+            display.bounding_box().center(),
+            self.character_style,
+            self.text_style,
+        )
+        .translate(Point::new(80, 0))
+        .draw(display)
+        .unwrap();
+
+        // DOWN
+
+        self.character_style.set_text_color(Some(Rgb565::CYAN));
+
+        self.string.clear();
+        self.string
+            .push_str(curr_wan_speed.down.numtoa_str(10, &mut self.str_buff))
+            .unwrap();
+
+        println!("curr_wan_speed: {}", self.string);
+        Text::with_text_style(
+            self.string.as_str(),
+            display.bounding_box().center(),
+            self.character_style,
+            self.text_style,
+        )
+        .translate(Point::new(80, 40))
+        .draw(display)
+        .unwrap();
+
+        display.flush().await.unwrap();
     }
 }

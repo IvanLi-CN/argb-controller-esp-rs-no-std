@@ -7,12 +7,11 @@ use embassy_time::{Duration, Instant, Timer};
 use esp_backtrace as _;
 use esp_println::println;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
-use hal::prelude::_fugit_ExtU32;
 use reqwless::{client::HttpClient, request::Method};
 use libm::Libm;
 
 use crate::{
-    bus::{NetDataTrafficSpeed, NET_DATA_TRAFFIC_SPEED_PUB_SUB},
+    bus::{NetDataTrafficSpeed, NET_DATA_TRAFFIC_SPEED},
     openwrt_types,
     wifi::NETWORK_CONFIG,
 };
@@ -22,9 +21,7 @@ pub async fn netdata_info(stack: &'static Stack<WifiDevice<'static, WifiStaDevic
     let mut header_rx_buf = [0; 512];
     let mut body_rx_buf = [0; 4096];
 
-    let publisher = NET_DATA_TRAFFIC_SPEED_PUB_SUB.publisher().unwrap();
-
-    let mut prev_fetch_at = Instant::now();
+    let mut prev_fetch_at: Instant;
 
     loop {
         if NETWORK_CONFIG.lock().is_none() {
@@ -32,6 +29,7 @@ pub async fn netdata_info(stack: &'static Stack<WifiDevice<'static, WifiStaDevic
             Timer::after(Duration::from_millis(1_000)).await;
             continue;
         }
+
         prev_fetch_at = Instant::now();
         Timer::after(Duration::from_secs(1)).await;
 
@@ -58,7 +56,9 @@ pub async fn netdata_info(stack: &'static Stack<WifiDevice<'static, WifiStaDevic
         };
         println!("Latest values: {}", pub_msg);
 
-        publisher.publish(pub_msg).await;
+        let mut speed = NET_DATA_TRAFFIC_SPEED.lock().await;
+        *speed = pub_msg;
+        drop(speed);
 
         Timer::at(prev_fetch_at.checked_add(Duration::from_secs(data.update_every as u64)).unwrap()).await;
     }

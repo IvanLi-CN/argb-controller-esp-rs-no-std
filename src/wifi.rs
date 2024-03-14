@@ -1,4 +1,3 @@
-
 use embassy_net::{tcp::TcpSocket, Ipv4Address, Stack, StaticConfigV4};
 
 use embassy_time::{Duration, Timer};
@@ -7,6 +6,8 @@ use esp_backtrace as _;
 use esp_println::println;
 use esp_wifi::wifi::{WifiController, WifiDevice, WifiEvent, WifiStaDevice, WifiState};
 use spin::{Lazy, Mutex};
+
+use crate::bus::{WiFiConnectStatus, WIFI_CONNECT_STATUS};
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
@@ -23,7 +24,7 @@ pub async fn wifi_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
     let mut tx_buffer = [0; 4096];
 
     loop {
-        if  NETWORK_CONFIG.lock().is_none() {
+        if NETWORK_CONFIG.lock().is_none() {
             println!("Waiting for network config...");
             Timer::after(Duration::from_millis(1_000)).await;
             continue;
@@ -116,6 +117,9 @@ pub async fn get_ip_addr(stack: &'static Stack<WifiDevice<'static, WifiStaDevice
                     println!("Got IP: {}", config.address);
                     let mut global_config = NETWORK_CONFIG.lock();
                     *global_config = Some(config);
+
+                    let mut connect_status = WIFI_CONNECT_STATUS.lock().await;
+                    *connect_status = WiFiConnectStatus::Connected;
                     break;
                 }
                 Timer::after(Duration::from_millis(500)).await;
@@ -128,7 +132,12 @@ pub async fn get_ip_addr(stack: &'static Stack<WifiDevice<'static, WifiStaDevice
             *global_config = None;
         }
 
-        Timer::after(Duration::from_millis(500)).await;
+        if NETWORK_CONFIG.lock().is_none() {
+            let mut connect_status = WIFI_CONNECT_STATUS.lock().await;
+            *connect_status = WiFiConnectStatus::Connecting;
+        }
+
+        Timer::after(Duration::from_millis(100)).await;
     }
 }
 
