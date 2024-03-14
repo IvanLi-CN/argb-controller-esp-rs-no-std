@@ -5,18 +5,14 @@ use embedded_svc::wifi::{ClientConfiguration, Configuration, Wifi};
 use esp_backtrace as _;
 use esp_println::println;
 use esp_wifi::wifi::{WifiController, WifiDevice, WifiEvent, WifiStaDevice, WifiState};
-use spin::{Lazy, Mutex};
-
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use crate::bus::{WiFiConnectStatus, WIFI_CONNECT_STATUS};
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
 // global variable ip address
-pub static NETWORK_CONFIG: Lazy<Mutex<Option<StaticConfigV4>>> = Lazy::new(|| {
-    println!("initializing");
-    Mutex::new(None)
-});
+pub static NETWORK_CONFIG: Mutex<CriticalSectionRawMutex, Option<StaticConfigV4>> = Mutex::new(None);
 
 #[embassy_executor::task]
 pub async fn wifi_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>) {
@@ -24,11 +20,14 @@ pub async fn wifi_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
     let mut tx_buffer = [0; 4096];
 
     loop {
-        if NETWORK_CONFIG.lock().is_none() {
+        let network_config_guard = NETWORK_CONFIG.lock().await;
+        if network_config_guard.is_none() {
+            drop(network_config_guard);
             println!("Waiting for network config...");
             Timer::after(Duration::from_millis(1_000)).await;
             continue;
         }
+        drop(network_config_guard);
 
         Timer::after(Duration::from_millis(1_000)).await;
 
@@ -110,13 +109,13 @@ pub async fn connection(mut controller: WifiController<'static>) {
 #[embassy_executor::task]
 pub async fn get_ip_addr(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>) {
     loop {
-        if stack.is_link_up() && NETWORK_CONFIG.lock().is_none() {
+        let mut network_config_guard = NETWORK_CONFIG.lock().await;
+        if stack.is_link_up() && network_config_guard.is_none() {
             println!("Waiting to get IP address...");
             loop {
                 if let Some(config) = stack.config_v4() {
                     println!("Got IP: {}", config.address);
-                    let mut global_config = NETWORK_CONFIG.lock();
-                    *global_config = Some(config);
+                    *network_config_guard = Some(config);
 
                     let mut connect_status = WIFI_CONNECT_STATUS.lock().await;
                     *connect_status = WiFiConnectStatus::Connected;
@@ -126,13 +125,12 @@ pub async fn get_ip_addr(stack: &'static Stack<WifiDevice<'static, WifiStaDevice
             }
         }
 
-        if !stack.is_link_up() && NETWORK_CONFIG.lock().is_some() {
+        if !stack.is_link_up() && network_config_guard.is_some() {
             println!("Link down or config down, reset NETWORK_CONFIG to None");
-            let mut global_config = NETWORK_CONFIG.lock();
-            *global_config = None;
+            *network_config_guard = None;
         }
 
-        if NETWORK_CONFIG.lock().is_none() {
+        if network_config_guard.is_none() {
             let mut connect_status = WIFI_CONNECT_STATUS.lock().await;
             *connect_status = WiFiConnectStatus::Connecting;
         }

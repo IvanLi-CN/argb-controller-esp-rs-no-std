@@ -7,13 +7,12 @@ use embassy_time::{Duration, Instant, Timer};
 use esp_backtrace as _;
 use esp_println::println;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
-use reqwless::{client::HttpClient, request::Method};
 use libm::Libm;
+use reqwless::{client::HttpClient, request::Method};
 
 use crate::{
-    bus::{NetDataTrafficSpeed, NET_DATA_TRAFFIC_SPEED},
+    bus::{NetDataTrafficSpeed, WiFiConnectStatus, NET_DATA_TRAFFIC_SPEED, WIFI_CONNECT_STATUS},
     openwrt_types,
-    wifi::NETWORK_CONFIG,
 };
 
 #[embassy_executor::task]
@@ -24,11 +23,15 @@ pub async fn netdata_info(stack: &'static Stack<WifiDevice<'static, WifiStaDevic
     let mut prev_fetch_at: Instant;
 
     loop {
-        if NETWORK_CONFIG.lock().is_none() {
-            println!("Waiting for network config...");
-            Timer::after(Duration::from_millis(1_000)).await;
+        let wifi_status_guard = WIFI_CONNECT_STATUS.lock().await;
+
+        if matches!(*wifi_status_guard, WiFiConnectStatus::Connecting) {
+            drop(wifi_status_guard);
+            println!("Waiting for wifi...");
+            Timer::after(Duration::from_millis(1_00)).await;
             continue;
         }
+        drop(wifi_status_guard);
 
         prev_fetch_at = Instant::now();
         Timer::after(Duration::from_secs(1)).await;
@@ -49,10 +52,9 @@ pub async fn netdata_info(stack: &'static Stack<WifiDevice<'static, WifiStaDevic
             serde_json_core::de::from_slice::<'_, openwrt_types::Data>(&body_rx_buf[..size])
                 .unwrap();
 
-
         let pub_msg = NetDataTrafficSpeed {
             up: Libm::<f32>::fabs(data.latest_values[1]) as u32,
-            down:  Libm::<f32>::fabs(data.latest_values[0]) as u32,
+            down: Libm::<f32>::fabs(data.latest_values[0]) as u32,
         };
         println!("Latest values: {}", pub_msg);
 
@@ -60,6 +62,11 @@ pub async fn netdata_info(stack: &'static Stack<WifiDevice<'static, WifiStaDevic
         *speed = pub_msg;
         drop(speed);
 
-        Timer::at(prev_fetch_at.checked_add(Duration::from_secs(data.update_every as u64)).unwrap()).await;
+        Timer::at(
+            prev_fetch_at
+                .checked_add(Duration::from_secs(data.update_every as u64))
+                .unwrap(),
+        )
+        .await;
     }
 }
