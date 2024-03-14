@@ -6,23 +6,20 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-hal = { package = "esp32c3-hal", version = "0.15.0", features = [
+hal = { package = "esp32c3-hal", version = "0.15.1", features = [
   "embassy",
   "async",
   "embassy-time-timg0",
   "embassy-executor-thread",
   "eh1"
 ] }
-esp-backtrace = { version = "0.10.0", features = [
+esp-backtrace = { version = "0.11.1", features = [
   "esp32c3",
   "panic-handler",
   "exception-handler",
-  "print-uart",
+  "println",
 ] }
-esp-println = { version = "0.9.0", features = ["esp32c3"] }
-embassy-executor = { version = "0.5.0", features = ["nightly"] }
-embassy-time = { version = "0.3.0", features = [] }
-static_cell = { version = "2.0.0", features = ["nightly"] }
+esp-println = { version = "0.9.1", features = ["esp32c3"] }
 esp-wifi = { version = "0.3.0", features = [
   "esp32c3",
   "async",
@@ -30,6 +27,9 @@ esp-wifi = { version = "0.3.0", features = [
   "dhcpv4",
   "embassy-net",
 ] }
+
+embassy-executor = { version = "0.5.0", features = ["nightly"] }
+embassy-time = { version = "0.3.0", features = [] }
 embassy-net = { version = "0.4.0", features = [
   "tcp",
   "dhcpv4",
@@ -39,13 +39,15 @@ embassy-net = { version = "0.4.0", features = [
 ] }
 embedded-io-async = { version = "0.6.0" }
 embedded-svc = { version = "0.27.0", default-features = false, features = [] }
+embedded-graphics = "0.8.1"
+embassy-embedded-hal = "0.1.0"
+embassy-sync = "0.5.0"
+
+static_cell = { version = "2.0.0", features = ["nightly"] }
 reqwless = "0.11.0"
 serde-json-core = "0.5.1"
 heapless = { version = "0.8.0", features = ["serde"] }
 serde = { version = "1.0.197", default-features = false, features = ["derive"] }
-embedded-graphics = "0.8.1"
-embassy-embedded-hal = "0.1.0"
-embassy-sync = "0.5.0"
 st7735 = { path = "./st7735" }
 numtoa = "0.2.4"
 libm = "0.2.8"
