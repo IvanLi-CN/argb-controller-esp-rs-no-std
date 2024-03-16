@@ -20,21 +20,18 @@ pub async fn netdata_info(stack: &'static Stack<WifiDevice<'static, WifiStaDevic
     let mut header_rx_buf = [0; 512];
     let mut body_rx_buf = [0; 4096];
 
-    let mut prev_fetch_at: Instant;
+    let mut prev_fetch_at: Instant = Instant::now();
 
     loop {
         let wifi_status_guard = WIFI_CONNECT_STATUS.lock().await;
 
         if matches!(*wifi_status_guard, WiFiConnectStatus::Connecting) {
             drop(wifi_status_guard);
-            println!("Waiting for wifi...");
+            // println!("Waiting for wifi...");
             Timer::after(Duration::from_millis(1_00)).await;
             continue;
         }
         drop(wifi_status_guard);
-
-        prev_fetch_at = Instant::now();
-        Timer::after(Duration::from_secs(1)).await;
 
         let tcp_client_state: TcpClientState<1, 1024, 1024> = TcpClientState::new();
         let tcp_client = TcpClient::new(stack, &tcp_client_state);
@@ -56,17 +53,19 @@ pub async fn netdata_info(stack: &'static Stack<WifiDevice<'static, WifiStaDevic
             up: Libm::<f32>::fabs(data.latest_values[1]) as u32,
             down: Libm::<f32>::fabs(data.latest_values[0]) as u32,
         };
-        println!("Latest values: {}", pub_msg);
 
         let mut speed = NET_DATA_TRAFFIC_SPEED.lock().await;
         *speed = pub_msg;
         drop(speed);
 
-        Timer::at(
-            prev_fetch_at
-                .checked_add(Duration::from_secs(data.update_every as u64))
-                .unwrap(),
-        )
-        .await;
+        let wait = prev_fetch_at.checked_add(Duration::from_secs(data.update_every as u64));
+        prev_fetch_at = Instant::now();
+
+        println!("curr: {:?}", Instant::now());
+        if let Some(wait) = wait {
+            Timer::at(wait).await;
+        } else {
+            Timer::after_millis(200).await;
+        }
     }
 }

@@ -7,10 +7,10 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Delay, Instant, Timer};
 use embedded_graphics::image::{Image, ImageRaw, ImageRawLE};
-use embedded_graphics::mono_font::iso_8859_1::FONT_10X20;
+use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
-use embedded_graphics::text::renderer::CharacterStyle;
+use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle, RoundedRectangle};
 use embedded_graphics::text::TextStyle;
 use embedded_graphics::{
     mono_font::{mapping::StrGlyphMapping, DecorationDimensions, MonoFont, MonoTextStyle},
@@ -71,7 +71,7 @@ pub(crate) async fn init_display(display: &'static mut DisplayST7735) {
         };
         drop(gui);
 
-        Timer::after(embassy_time::Duration::from_millis(10)).await;
+        Timer::after_millis(10).await;
     }
 }
 
@@ -173,14 +173,11 @@ impl<'a> GUIPageFrame for WiFiConnectingPage<'a> {
 
         self.last_draw_time = Instant::now();
 
-
         self.string.clear();
         self.string.push_str("Connecting").unwrap();
 
         for _ in 0..self.animation_frame_index {
-            self.string
-                .push_str( ".")
-                .unwrap();
+            self.string.push_str(".").unwrap();
         }
 
         let image_raw: ImageRawLE<Rgb565> = match self.animation_frame_index {
@@ -228,9 +225,9 @@ struct NetDataTrafficSpeedPage<'a> {
 impl<'a> NetDataTrafficSpeedPage<'a> {
     pub fn new() -> Self {
         Self {
-            character_style: MonoTextStyle::new(&SEVENT_SEGMENT_FONT, Rgb565::CYAN),
+            character_style: MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE),
             text_style: TextStyleBuilder::new()
-                .baseline(Baseline::Middle)
+                .baseline(Baseline::Bottom)
                 .alignment(Alignment::Right)
                 .build(),
             prev_wan_speed: NetDataTrafficSpeed::default(),
@@ -252,21 +249,47 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
         self.prev_wan_speed = curr_wan_speed;
         drop(curr_wan_speed_guard);
 
-        display.clear(Rgb565::BLACK).unwrap();
+        let style = PrimitiveStyleBuilder::new()
+            .stroke_width(1)
+            .stroke_color(Rgb565::CSS_ORANGE_RED)
+            .fill_color(Rgb565::CSS_DARK_RED)
+            .build();
+        RoundedRectangle::with_equal_corners(
+            Rectangle::new(Point::new(0, 0), Size::new(79, 24)),
+            Size::new(5, 5),
+        )
+        .into_styled(style)
+        .draw(display)
+        .unwrap();
+        let style = PrimitiveStyleBuilder::new()
+            .stroke_width(1)
+            .stroke_color(Rgb565::CSS_BLUE)
+            .fill_color(Rgb565::CSS_DARK_BLUE)
+            .build();
+        RoundedRectangle::with_equal_corners(
+            Rectangle::new(Point::new(81, 0), Size::new(79, 24)),
+            Size::new(5, 5),
+        )
+        .into_styled(style)
+        .draw(display)
+        .unwrap();
 
         // UP
 
-        self.character_style
-            .set_text_color(Some(Rgb565::CSS_ORANGE_RED));
-
         self.string.clear();
         self.string
-            .push_str(curr_wan_speed.up.numtoa_str(10, &mut self.str_buff))
+            .push_str(
+                curr_wan_speed
+                    .up
+                    .div_floor(8)
+                    .numtoa_str(10, &mut self.str_buff),
+            )
             .unwrap();
+        self.string.push_str("KB").unwrap();
 
         Text::with_text_style(
             self.string.as_str(),
-            Point::new(160, 20),
+            Point::new(75, 22),
             self.character_style,
             self.text_style,
         )
@@ -275,16 +298,20 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
 
         // DOWN
 
-        self.character_style.set_text_color(Some(Rgb565::CYAN));
-
         self.string.clear();
         self.string
-            .push_str(curr_wan_speed.down.numtoa_str(10, &mut self.str_buff))
+            .push_str(
+                curr_wan_speed
+                    .down
+                    .div_floor(8)
+                    .numtoa_str(10, &mut self.str_buff),
+            )
             .unwrap();
+        self.string.push_str("KB").unwrap();
 
         Text::with_text_style(
             self.string.as_str(),
-            Point::new(160, 60),
+            Point::new(155, 22),
             self.character_style,
             self.text_style,
         )

@@ -4,6 +4,7 @@
 #![feature(const_refs_to_static)]
 #![feature(const_maybe_uninit_write)]
 #![feature(const_mut_refs)]
+#![feature(int_roundings)]
 
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embassy_executor::Spawner;
