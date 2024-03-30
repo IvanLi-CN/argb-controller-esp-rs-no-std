@@ -33,7 +33,6 @@ embassy-executor = { version = "0.5.0", features = ["nightly"] }
 embassy-time = { version = "0.3.0", features = [
 ] }
 embassy-net = { version = "0.4.0", features = [
-  "tcp",
   "dhcpv4",
   "udp",
   "dns",
@@ -46,9 +45,7 @@ embassy-sync = "0.5.0"
 
 static_cell = { version = "2.0.0", features = ["nightly"] }
 reqwless = "0.11.0"
-serde-json-core = "0.5.1"
 heapless = { version = "0.8.0", features = ["serde"] }
 serde = { version = "1.0.197", default-features = false, features = ["derive"] }
 st7735 = { path = "./st7735" }
 numtoa = "0.2.4"
-libm = "0.2.8"

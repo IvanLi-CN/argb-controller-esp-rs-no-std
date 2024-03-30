@@ -1,8 +1,6 @@
 use core::fmt::Display;
 
-use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex
-};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NetDataTrafficSpeed {
@@ -35,8 +33,52 @@ impl Display for WiFiConnectStatus {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct NetSpeed {
+    pub direct_up_bps: u64,
+    pub direct_down_bps: u64,
+    pub proxy_up_bps: u64,
+    pub proxy_down_bps: u64,
+    pub bypass_up_bps: u64,
+    pub bypass_down_bps: u64,
+}
+
+impl Default for NetSpeed {
+    fn default() -> Self {
+        Self {
+            direct_up_bps: 0,
+            direct_down_bps: 0,
+            proxy_up_bps: 0,
+            proxy_down_bps: 0,
+            bypass_up_bps: 0,
+            bypass_down_bps: 0,
+        }
+    }
+}
+
+impl Display for NetSpeed {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "direct_bps: ({}, {}), proxy_bps: ({}, {}), bypass_bps: ({}, {})",
+            self.direct_up_bps,
+            self.direct_down_bps,
+            self.proxy_up_bps,
+            self.proxy_down_bps,
+            self.bypass_up_bps,
+            self.bypass_down_bps
+        )
+    }
+}
+
 pub static WIFI_CONNECT_STATUS: Mutex<CriticalSectionRawMutex, WiFiConnectStatus> =
     Mutex::new(WiFiConnectStatus::Connecting);
 
-pub static NET_DATA_TRAFFIC_SPEED: Mutex<CriticalSectionRawMutex, NetDataTrafficSpeed> =
-    Mutex::new(NetDataTrafficSpeed { up: 0, down: 0 });
+pub static NET_SPEED: Mutex<CriticalSectionRawMutex, NetSpeed> = Mutex::new(NetSpeed {
+    direct_up_bps: 0,
+    direct_down_bps: 0,
+    proxy_up_bps: 0,
+    proxy_down_bps: 0,
+    bypass_up_bps: 0,
+    bypass_down_bps: 0,
+});

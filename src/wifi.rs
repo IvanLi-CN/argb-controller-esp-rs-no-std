@@ -1,4 +1,4 @@
-use embassy_net::{tcp::TcpSocket, Ipv4Address, Stack, StaticConfigV4};
+use embassy_net::{Stack, StaticConfigV4};
 
 use crate::bus::{WiFiConnectStatus, WIFI_CONNECT_STATUS};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};

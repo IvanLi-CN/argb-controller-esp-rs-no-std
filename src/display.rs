@@ -1,5 +1,5 @@
 use crate::bus::{
-    NetDataTrafficSpeed, WiFiConnectStatus, NET_DATA_TRAFFIC_SPEED, WIFI_CONNECT_STATUS,
+    NetSpeed, WiFiConnectStatus, NET_SPEED, WIFI_CONNECT_STATUS,
 };
 use core::future::Future;
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
@@ -32,10 +32,10 @@ pub(crate) type DisplayST7735 = ST7735<
         'static,
         NoopRawMutex,
         SpiDma<'static, SPI2, Channel0, FullDuplexMode>,
-        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 5>,
+        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 9>,
     >,
-    GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 4>,
-    GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 3>,
+    GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 7>,
+    GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 8>,
 >;
 
 const SEVENT_SEGMENT_FONT: MonoFont = MonoFont {
@@ -217,7 +217,7 @@ impl<'a> GUIPageFrame for WiFiConnectingPage<'a> {
 struct NetDataTrafficSpeedPage<'a> {
     character_style: MonoTextStyle<'a, Rgb565>,
     text_style: TextStyle,
-    prev_wan_speed: NetDataTrafficSpeed,
+    prev_speed: NetSpeed,
     str_buff: [u8; 20],
     string: String<20>,
 }
@@ -230,7 +230,7 @@ impl<'a> NetDataTrafficSpeedPage<'a> {
                 .baseline(Baseline::Bottom)
                 .alignment(Alignment::Right)
                 .build(),
-            prev_wan_speed: NetDataTrafficSpeed::default(),
+            prev_speed: NetSpeed::default(),
             str_buff: [0u8; 20],
             string: String::new(),
         }
@@ -239,84 +239,222 @@ impl<'a> NetDataTrafficSpeedPage<'a> {
 
 impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
     async fn frame(&mut self, display: &mut DisplayST7735) {
-        let curr_wan_speed_guard = NET_DATA_TRAFFIC_SPEED.lock().await;
-        let curr_wan_speed = *curr_wan_speed_guard;
+        let curr_speed_guard = NET_SPEED.lock().await;
+        let curr_speed = *curr_speed_guard;
 
-        if self.prev_wan_speed == curr_wan_speed {
-            return;
+        self.prev_speed = curr_speed;
+        drop(curr_speed_guard);
+
+        // Direct
+
+        {
+            let style = PrimitiveStyleBuilder::new()
+                .stroke_width(1)
+                .stroke_color(Rgb565::CSS_ORANGE_RED)
+                .fill_color(Rgb565::CSS_DARK_RED)
+                .build();
+            RoundedRectangle::with_equal_corners(
+                Rectangle::new(Point::new(0, 0), Size::new(79, 24)),
+                Size::new(5, 5),
+            )
+            .into_styled(style)
+            .draw(display)
+            .unwrap();
+            let style = PrimitiveStyleBuilder::new()
+                .stroke_width(1)
+                .stroke_color(Rgb565::CSS_BLUE)
+                .fill_color(Rgb565::CSS_DARK_BLUE)
+                .build();
+            RoundedRectangle::with_equal_corners(
+                Rectangle::new(Point::new(81, 0), Size::new(79, 24)),
+                Size::new(5, 5),
+            )
+            .into_styled(style)
+            .draw(display)
+            .unwrap();
+
+            // UP
+
+            self.string.clear();
+            self.string
+                .push_str(
+                    curr_speed
+                        .direct_up_bps
+                        .numtoa_str(10, &mut self.str_buff),
+                )
+                .unwrap();
+            self.string.push_str("B").unwrap();
+
+            Text::with_text_style(
+                self.string.as_str(),
+                Point::new(75, 22),
+                self.character_style,
+                self.text_style,
+            )
+            .draw(display)
+            .unwrap();
+
+            // DOWN
+
+            self.string.clear();
+            self.string
+                .push_str(
+                    curr_speed
+                        .direct_down_bps
+                        .numtoa_str(10, &mut self.str_buff),
+                )
+                .unwrap();
+            self.string.push_str("B").unwrap();
+
+            Text::with_text_style(
+                self.string.as_str(),
+                Point::new(155, 22),
+                self.character_style,
+                self.text_style,
+            )
+            .draw(display)
+            .unwrap();
         }
 
-        self.prev_wan_speed = curr_wan_speed;
-        drop(curr_wan_speed_guard);
-
-        let style = PrimitiveStyleBuilder::new()
-            .stroke_width(1)
-            .stroke_color(Rgb565::CSS_ORANGE_RED)
-            .fill_color(Rgb565::CSS_DARK_RED)
-            .build();
-        RoundedRectangle::with_equal_corners(
-            Rectangle::new(Point::new(0, 0), Size::new(79, 24)),
-            Size::new(5, 5),
-        )
-        .into_styled(style)
-        .draw(display)
-        .unwrap();
-        let style = PrimitiveStyleBuilder::new()
-            .stroke_width(1)
-            .stroke_color(Rgb565::CSS_BLUE)
-            .fill_color(Rgb565::CSS_DARK_BLUE)
-            .build();
-        RoundedRectangle::with_equal_corners(
-            Rectangle::new(Point::new(81, 0), Size::new(79, 24)),
-            Size::new(5, 5),
-        )
-        .into_styled(style)
-        .draw(display)
-        .unwrap();
-
-        // UP
-
-        self.string.clear();
-        self.string
-            .push_str(
-                curr_wan_speed
-                    .up
-                    .div_floor(8)
-                    .numtoa_str(10, &mut self.str_buff),
+        // Proxy
+        {
+            let style = PrimitiveStyleBuilder::new()
+                .stroke_width(1)
+                .stroke_color(Rgb565::CSS_YELLOW)
+                .fill_color(Rgb565::CSS_GOLD)
+                .build();
+            RoundedRectangle::with_equal_corners(
+                Rectangle::new(Point::new(0, 27), Size::new(79, 24)),
+                Size::new(5, 5),
             )
+            .into_styled(style)
+            .draw(display)
             .unwrap();
-        self.string.push_str("KB").unwrap();
-
-        Text::with_text_style(
-            self.string.as_str(),
-            Point::new(75, 22),
-            self.character_style,
-            self.text_style,
-        )
-        .draw(display)
-        .unwrap();
-
-        // DOWN
-
-        self.string.clear();
-        self.string
-            .push_str(
-                curr_wan_speed
-                    .down
-                    .div_floor(8)
-                    .numtoa_str(10, &mut self.str_buff),
+            let style = PrimitiveStyleBuilder::new()
+                .stroke_width(1)
+                .stroke_color(Rgb565::CSS_LIME_GREEN)
+                .fill_color(Rgb565::CSS_FOREST_GREEN)
+                .build();
+            RoundedRectangle::with_equal_corners(
+                Rectangle::new(Point::new(81, 27), Size::new(79, 24)),
+                Size::new(5, 5),
             )
+            .into_styled(style)
+            .draw(display)
             .unwrap();
-        self.string.push_str("KB").unwrap();
 
-        Text::with_text_style(
-            self.string.as_str(),
-            Point::new(155, 22),
-            self.character_style,
-            self.text_style,
-        )
-        .draw(display)
-        .unwrap();
+            // UP
+
+            self.string.clear();
+            self.string
+                .push_str(
+                    curr_speed
+                        .proxy_up_bps
+                        .numtoa_str(10, &mut self.str_buff),
+                )
+                .unwrap();
+            self.string.push_str("B").unwrap();
+
+            Text::with_text_style(
+                self.string.as_str(),
+                Point::new(75, 48),
+                self.character_style,
+                self.text_style,
+            )
+            .draw(display)
+            .unwrap();
+
+            // DOWN
+
+            self.string.clear();
+            self.string
+                .push_str(
+                    curr_speed
+                        .proxy_down_bps
+                        .numtoa_str(10, &mut self.str_buff),
+                )
+                .unwrap();
+            self.string.push_str("B").unwrap();
+
+            Text::with_text_style(
+                self.string.as_str(),
+                Point::new(155, 48),
+                self.character_style,
+                self.text_style,
+            )
+            .draw(display)
+            .unwrap();
+        }
+
+        // Bypass
+        {
+            let style = PrimitiveStyleBuilder::new()
+                .stroke_width(1)
+                .stroke_color(Rgb565::CSS_SLATE_BLUE)
+                .fill_color(Rgb565::CSS_PURPLE)
+                .build();
+            RoundedRectangle::with_equal_corners(
+                Rectangle::new(Point::new(0, 56), Size::new(79, 24)),
+                Size::new(5, 5),
+            )
+            .into_styled(style)
+            .draw(display)
+            .unwrap();
+            let style = PrimitiveStyleBuilder::new()
+                .stroke_width(1)
+                .stroke_color(Rgb565::CSS_LIME_GREEN)
+                .fill_color(Rgb565::CSS_FOREST_GREEN)
+                .build();
+            RoundedRectangle::with_equal_corners(
+                Rectangle::new(Point::new(81, 56), Size::new(79, 24)),
+                Size::new(5, 5),
+            )
+            .into_styled(style)
+            .draw(display)
+            .unwrap();
+
+            // UP
+
+            self.string.clear();
+            self.string
+                .push_str(
+                    curr_speed
+                        .bypass_up_bps
+                        .numtoa_str(10, &mut self.str_buff),
+                )
+                .unwrap();
+            self.string.push_str("B").unwrap();
+
+            Text::with_text_style(
+                self.string.as_str(),
+                Point::new(75, 78),
+                self.character_style,
+                self.text_style,
+            )
+            .draw(display)
+            .unwrap();
+
+            // DOWN
+
+            self.string.clear();
+            self.string
+                .push_str(
+                    curr_speed
+                        .bypass_down_bps
+                        .numtoa_str(10, &mut self.str_buff),
+                )
+                .unwrap();
+            self.string.push_str("B").unwrap();
+
+            Text::with_text_style(
+                self.string.as_str(),
+                Point::new(155, 78),
+                self.character_style,
+                self.text_style,
+            )
+            .draw(display)
+            .unwrap();
+        }
 
         display.flush().await.unwrap();
     }

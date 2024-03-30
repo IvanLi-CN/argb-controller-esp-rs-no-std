@@ -41,13 +41,13 @@ use static_cell::make_static;
 use embassy_net::{Config, Stack, StackResources};
 mod bus;
 mod display;
-mod openwrt;
-mod openwrt_types;
 mod wifi;
-use openwrt::netdata_info;
+mod udp_client;
 use wifi::{connection, get_ip_addr, net_task};
 
 use esp_backtrace as _;
+
+use crate::udp_client::receiving_net_speed;
 #[embassy_executor::task]
 async fn blink(blink_led: &'static mut GpioPin<Unknown, 1>) {
     let mut blink_led = unsafe { blink_led.clone_unchecked() }.into_push_pull_output();
@@ -109,8 +109,8 @@ async fn main(spawner: Spawner) {
 
     // SPI
 
-    let sck = io.pins.gpio8.into_push_pull_output();
-    let sdo = io.pins.gpio10.into_push_pull_output();
+    let sdo = io.pins.gpio5.into_push_pull_output();
+    let sck = io.pins.gpio6.into_push_pull_output();
     let (tx_descriptors,  rx_descriptors) = dma_descriptors!(32000, 4096);
     let tx_descriptors = make_static!(tx_descriptors);
     let rx_descriptors = make_static!(rx_descriptors);
@@ -130,14 +130,14 @@ async fn main(spawner: Spawner) {
 
     // Display
 
-    let rst = io.pins.gpio3.into_push_pull_output();
-    let dc = io.pins.gpio4.into_push_pull_output();
-    let lcd_cs = io.pins.gpio5.into_push_pull_output();
+    let dc = io.pins.gpio7.into_push_pull_output();
+    let rst = io.pins.gpio8.into_push_pull_output();
+    let lcd_cs = io.pins.gpio9.into_push_pull_output();
     let spi_dev: SpiDevice<
         '_,
         NoopRawMutex,
         _,
-        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 5>,
+        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 9>,
     > = SpiDevice::new(spi, lcd_cs);
 
     let width = 160;
@@ -149,10 +149,10 @@ async fn main(spawner: Spawner) {
             '_,
             NoopRawMutex,
             SpiDma<'static, SPI2, Channel0, FullDuplexMode>,
-            GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 5>,
+            GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 9>,
         >,
-        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 4>,
-        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 3>,
+        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 7>,
+        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 8>,
     > = ST7735::new(
         spi_dev,
         dc,
@@ -172,7 +172,7 @@ async fn main(spawner: Spawner) {
     spawner.spawn(connection(controller)).ok();
     spawner.spawn(net_task(&stack)).ok();
     spawner.spawn(get_ip_addr(&stack)).ok();
-    spawner.spawn(netdata_info(&stack)).ok();
+    spawner.spawn(receiving_net_speed(&stack)).ok();
 
     loop {
         Timer::after(Duration::from_millis(1000)).await;
