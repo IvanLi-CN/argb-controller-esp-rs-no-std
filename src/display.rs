@@ -16,7 +16,6 @@ use embedded_graphics::{
     mono_font::{mapping::StrGlyphMapping, DecorationDimensions, MonoFont, MonoTextStyle},
     text::{Alignment, Baseline, Text, TextStyleBuilder},
 };
-use esp_println::println;
 use hal::dma::Channel0;
 use hal::gpio::GpioPin;
 use hal::peripherals::SPI2;
@@ -275,15 +274,7 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
 
             // UP
 
-            self.string.clear();
-            self.string
-                .push_str(
-                    curr_speed
-                        .direct_up_bps
-                        .numtoa_str(10, &mut self.str_buff),
-                )
-                .unwrap();
-            self.string.push_str("B").unwrap();
+            curr_speed.get_direct_up_bps_str(&mut self.string, &mut self.str_buff);
 
             Text::with_text_style(
                 self.string.as_str(),
@@ -296,15 +287,8 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
 
             // DOWN
 
-            self.string.clear();
-            self.string
-                .push_str(
-                    curr_speed
-                        .direct_down_bps
-                        .numtoa_str(10, &mut self.str_buff),
-                )
-                .unwrap();
-            self.string.push_str("B").unwrap();
+            
+            curr_speed.get_direct_down_bps_str(&mut self.string, &mut self.str_buff);
 
             Text::with_text_style(
                 self.string.as_str(),
@@ -324,7 +308,7 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
                 .fill_color(Rgb565::CSS_GOLD)
                 .build();
             RoundedRectangle::with_equal_corners(
-                Rectangle::new(Point::new(0, 27), Size::new(79, 24)),
+                Rectangle::new(Point::new(0, 29), Size::new(79, 24)),
                 Size::new(5, 5),
             )
             .into_styled(style)
@@ -336,7 +320,7 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
                 .fill_color(Rgb565::CSS_FOREST_GREEN)
                 .build();
             RoundedRectangle::with_equal_corners(
-                Rectangle::new(Point::new(81, 27), Size::new(79, 24)),
+                Rectangle::new(Point::new(81, 29), Size::new(79, 24)),
                 Size::new(5, 5),
             )
             .into_styled(style)
@@ -345,19 +329,11 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
 
             // UP
 
-            self.string.clear();
-            self.string
-                .push_str(
-                    curr_speed
-                        .proxy_up_bps
-                        .numtoa_str(10, &mut self.str_buff),
-                )
-                .unwrap();
-            self.string.push_str("B").unwrap();
+            curr_speed.get_proxy_up_bps_str(&mut self.string, &mut self.str_buff);
 
             Text::with_text_style(
                 self.string.as_str(),
-                Point::new(75, 48),
+                Point::new(75, 51),
                 self.character_style,
                 self.text_style,
             )
@@ -366,19 +342,11 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
 
             // DOWN
 
-            self.string.clear();
-            self.string
-                .push_str(
-                    curr_speed
-                        .proxy_down_bps
-                        .numtoa_str(10, &mut self.str_buff),
-                )
-                .unwrap();
-            self.string.push_str("B").unwrap();
+            curr_speed.get_proxy_down_bps_str(&mut self.string, &mut self.str_buff);
 
             Text::with_text_style(
                 self.string.as_str(),
-                Point::new(155, 48),
+                Point::new(155, 51),
                 self.character_style,
                 self.text_style,
             )
@@ -415,15 +383,7 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
 
             // UP
 
-            self.string.clear();
-            self.string
-                .push_str(
-                    curr_speed
-                        .bypass_up_bps
-                        .numtoa_str(10, &mut self.str_buff),
-                )
-                .unwrap();
-            self.string.push_str("B").unwrap();
+            curr_speed.get_bypass_up_bps_str(&mut self.string, &mut self.str_buff);
 
             Text::with_text_style(
                 self.string.as_str(),
@@ -436,15 +396,7 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
 
             // DOWN
 
-            self.string.clear();
-            self.string
-                .push_str(
-                    curr_speed
-                        .bypass_down_bps
-                        .numtoa_str(10, &mut self.str_buff),
-                )
-                .unwrap();
-            self.string.push_str("B").unwrap();
+            curr_speed.get_bypass_down_bps_str(&mut self.string, &mut self.str_buff);
 
             Text::with_text_style(
                 self.string.as_str(),
