@@ -1,6 +1,4 @@
-use crate::bus::{
-    NetSpeed, WiFiConnectStatus, NET_SPEED, WIFI_CONNECT_STATUS,
-};
+use crate::bus::{NetSpeed, WiFiConnectStatus, NET_SPEED, WIFI_CONNECT_STATUS};
 use core::future::Future;
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
@@ -8,7 +6,7 @@ use embassy_sync::mutex::Mutex;
 use embassy_time::{Delay, Instant, Timer};
 use embedded_graphics::image::{Image, ImageRaw, ImageRawLE};
 use embedded_graphics::mono_font::ascii::FONT_10X20;
-use embedded_graphics::pixelcolor::Rgb565;
+use embedded_graphics::pixelcolor::{Rgb565, Rgb888};
 use embedded_graphics::prelude::*;
 use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle, RoundedRectangle};
 use embedded_graphics::text::TextStyle;
@@ -248,9 +246,8 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
 
         {
             let style = PrimitiveStyleBuilder::new()
-                .stroke_width(1)
-                .stroke_color(Rgb565::CSS_ORANGE_RED)
-                .fill_color(Rgb565::CSS_DARK_RED)
+                // #f94144
+                .fill_color(Rgb565::from(Rgb888::new(0xf9, 0x41, 0x44)))
                 .build();
             RoundedRectangle::with_equal_corners(
                 Rectangle::new(Point::new(0, 0), Size::new(79, 24)),
@@ -260,9 +257,8 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
             .draw(display)
             .unwrap();
             let style = PrimitiveStyleBuilder::new()
-                .stroke_width(1)
-                .stroke_color(Rgb565::CSS_BLUE)
-                .fill_color(Rgb565::CSS_DARK_BLUE)
+                // #277da1
+                .fill_color(Rgb565::from(Rgb888::new(0x27, 0x7d, 0xa1)))
                 .build();
             RoundedRectangle::with_equal_corners(
                 Rectangle::new(Point::new(81, 0), Size::new(79, 24)),
@@ -287,7 +283,6 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
 
             // DOWN
 
-            
             curr_speed.get_direct_down_bps_str(&mut self.string, &mut self.str_buff);
 
             Text::with_text_style(
@@ -303,24 +298,22 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
         // Proxy
         {
             let style = PrimitiveStyleBuilder::new()
-                .stroke_width(1)
-                .stroke_color(Rgb565::CSS_YELLOW)
-                .fill_color(Rgb565::CSS_GOLD)
+                // f3722c
+                .fill_color(Rgb565::from(Rgb888::new(0xf3, 0x72, 0x2c)))
                 .build();
             RoundedRectangle::with_equal_corners(
-                Rectangle::new(Point::new(0, 29), Size::new(79, 24)),
+                Rectangle::new(Point::new(0, 28), Size::new(79, 24)),
                 Size::new(5, 5),
             )
             .into_styled(style)
             .draw(display)
             .unwrap();
             let style = PrimitiveStyleBuilder::new()
-                .stroke_width(1)
-                .stroke_color(Rgb565::CSS_LIME_GREEN)
-                .fill_color(Rgb565::CSS_FOREST_GREEN)
+                // 577590
+                .fill_color(Rgb565::from(Rgb888::new(0x57, 0x75, 0x90)))
                 .build();
             RoundedRectangle::with_equal_corners(
-                Rectangle::new(Point::new(81, 29), Size::new(79, 24)),
+                Rectangle::new(Point::new(81, 28), Size::new(79, 24)),
                 Size::new(5, 5),
             )
             .into_styled(style)
@@ -357,9 +350,8 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
         // Bypass
         {
             let style = PrimitiveStyleBuilder::new()
-                .stroke_width(1)
-                .stroke_color(Rgb565::CSS_SLATE_BLUE)
-                .fill_color(Rgb565::CSS_PURPLE)
+                // f8961e
+                .fill_color(Rgb565::from(Rgb888::new(0xf8, 0x96, 0x1e)))
                 .build();
             RoundedRectangle::with_equal_corners(
                 Rectangle::new(Point::new(0, 56), Size::new(79, 24)),
@@ -369,9 +361,8 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
             .draw(display)
             .unwrap();
             let style = PrimitiveStyleBuilder::new()
-                .stroke_width(1)
-                .stroke_color(Rgb565::CSS_LIME_GREEN)
-                .fill_color(Rgb565::CSS_FOREST_GREEN)
+                // 4d908e
+                .fill_color(Rgb565::from(Rgb888::new(0x4d, 0x90, 0x8e)))
                 .build();
             RoundedRectangle::with_equal_corners(
                 Rectangle::new(Point::new(81, 56), Size::new(79, 24)),
