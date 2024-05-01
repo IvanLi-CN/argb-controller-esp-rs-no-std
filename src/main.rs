@@ -17,7 +17,9 @@ use esp_wifi::wifi::WifiStaDevice;
 use esp_wifi::{initialize, EspWifiInitFor};
 use hal::dma::{Channel0, Dma};
 use hal::dma::DmaPriority;
-use hal::dma_descriptors;
+use hal::rng::Rng;
+use hal::{dma_descriptors, Async};
+use hal::gpio::IO;
 use hal::peripherals::SPI2;
 use hal::spi::master::dma::SpiDma;
 use hal::spi::FullDuplexMode;
@@ -33,7 +35,6 @@ use hal::{
         SpiMode,
     },
     timer::TimerGroup,
-    Rng, IO,
 };
 use st7735::ST7735;
 use static_cell::make_static;
@@ -51,10 +52,10 @@ use crate::udp_client::receiving_net_speed;
 #[embassy_executor::task]
 async fn blink(blink_led: &'static mut GpioPin<Unknown, 1>) {
     let mut blink_led = unsafe { blink_led.clone_unchecked() }.into_push_pull_output();
-    blink_led.set_high().unwrap();
+    blink_led.set_high();
 
     loop {
-        blink_led.toggle().unwrap();
+        blink_led.toggle();
         Timer::after(Duration::from_millis(5_00)).await;
     }
 }
@@ -68,13 +69,13 @@ async fn main(spawner: Spawner) {
     let peripherals = Peripherals::take();
     let system = peripherals.SYSTEM.split();
     let clocks: clock::Clocks<'static> = ClockControl::max(system.clock_control).freeze();
-    let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
+     let timg0 = TimerGroup::new_async(peripherals.TIMG0, &clocks);
 
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
 
     let blink_led: &'static mut GpioPin<Unknown, 1> = make_static!(io.pins.gpio1);
 
-    embassy::init(&clocks, timer_group0);
+    embassy::init(&clocks, timg0);
 
     let timer = hal::systimer::SystemTimer::new(peripherals.SYSTIMER).alarm0;
 
@@ -101,7 +102,7 @@ async fn main(spawner: Spawner) {
         make_static!(StackResources::<3>::new()),
         seed
     ));
-
+    
     // DMA
 
     let dma = Dma::new(peripherals.DMA);
@@ -115,11 +116,11 @@ async fn main(spawner: Spawner) {
     let tx_descriptors = make_static!(tx_descriptors);
     let rx_descriptors = make_static!(rx_descriptors);
 
-    let spi: SpiDma<'_, SPI2, Channel0, FullDuplexMode> =
+    let spi: SpiDma<'_, SPI2, Channel0, FullDuplexMode, Async> =
         Spi::new(peripherals.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks)
             .with_sck(sck)
             .with_mosi(sdo)
-            .with_dma(dma_channel.configure(
+            .with_dma(dma_channel.configure_for_async(
                 false,
                 tx_descriptors,
                 rx_descriptors,
@@ -148,7 +149,7 @@ async fn main(spawner: Spawner) {
         SpiDevice<
             '_,
             NoopRawMutex,
-            SpiDma<'static, SPI2, Channel0, FullDuplexMode>,
+            SpiDma<'static, SPI2, Channel0, FullDuplexMode, Async>,
             GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 9>,
         >,
         GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 7>,

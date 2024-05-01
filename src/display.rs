@@ -19,8 +19,8 @@ use hal::gpio::GpioPin;
 use hal::peripherals::SPI2;
 use hal::spi::master::dma::SpiDma;
 use hal::spi::FullDuplexMode;
+use hal::Async;
 use heapless::String;
-use numtoa::NumToA;
 use st7735::ST7735;
 use static_cell::make_static;
 
@@ -28,7 +28,7 @@ pub(crate) type DisplayST7735 = ST7735<
     SpiDevice<
         'static,
         NoopRawMutex,
-        SpiDma<'static, SPI2, Channel0, FullDuplexMode>,
+        SpiDma<'static, SPI2, Channel0, FullDuplexMode, Async>,
         GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 9>,
     >,
     GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 7>,
@@ -326,7 +326,7 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
 
             Text::with_text_style(
                 self.string.as_str(),
-                Point::new(75, 51),
+                Point::new(75, 50),
                 self.character_style,
                 self.text_style,
             )
@@ -339,7 +339,7 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
 
             Text::with_text_style(
                 self.string.as_str(),
-                Point::new(155, 51),
+                Point::new(155, 50),
                 self.character_style,
                 self.text_style,
             )
