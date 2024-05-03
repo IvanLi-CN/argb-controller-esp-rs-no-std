@@ -1,37 +1,26 @@
-# esp32c3-no-std-async-mqtt-demo
+# Network-Monitor-esp-rs-no-std
 
-This is a simple demo that we will use on the upcoming Espressif DevCon23.
+This is the MCU software part of an Network speed monitor based on ESP32C3. The project collects network speed information from OpenWRT and OpenClash through a Rust server and sends the result to the monitor via UDP to display to the user.
 
-ESP32 variant: https://github.com/JurajSadel/esp32-no-std-async-mqtt-demo
+![Finished Product](https://s3.ivanli.cc/ivan-public/uPic/2024/2atMTj.png)
 
-ESP32S3 variant: https://github.com/JurajSadel/esp32s3-no-std-async-mqtt-demo
+## Hardwares
 
-## What it does
-The application measures temperature (`BMP180`) and sends the results to `MQTT` via WiFi - everything is done asynchronously.
+- MCU: ESP3-C3FH4
+- Display: ST7735 80x160 RGB 0.96 inch
 
-It's `async no_std` application that uses [esp-hal](https://crates.io/crates/esp32c3-hal), [esp-wifi](https://github.com/esp-rs/esp-wifi/tree/main), and [rust-mqtt](https://crates.io/crates/rust-mqtt) crates. The main skeleton is made of [embassy_dhcp](https://github.com/esp-rs/esp-wifi/blob/68dc11bbb2c0efa29c4acbbf134d6f142441065e/examples-esp32c3/examples/embassy_dhcp.rs) and [no_std_temperature_logger](https://github.com/bjoernQ/esp32-rust-nostd-temperature-logger) with a bunch of changes.
+## Dependencies
 
-The first change is `MQTT` part added. We are using `MQTTv5`. As a broker, we use[public-mqtt-broker](https://www.hivemq.com/public-mqtt-broker/) and [websocket-client](https://www.hivemq.com/demos/websocket-client/) to see the results.
+- [esp-hal](https://github.com/esp-rs/esp-hal) (`no-std`)
+- [esp-wifi](https://github.com/esp-rs/esp-wifi)
+- [embassy](https://embassy.dev/)
+- [st7735](https://github.com/kalkyl/st7735-embassy) (forked)
 
-As a next change, we had to make [bmp180.rs](https://github.com/bjoernQ/esp32-rust-nostd-temperature-logger/blob/main/src/bmp180.rs) `async`.
+## Other Resources
 
-## Build and run
-You have to set the `SSID` and `PASSWORD` environment variables before building/running the program
+- [Server Code](https://git.ivanli.cc/display-ambient-light/network-monitor);
+- [Shell model](https://s.ivanli.cc/s/network-monitor-shell);
 
-`cargo run --release`
-
-> **_WARN:_** Be sure you are using `release` mode!
 ## License
 
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
-
-### Contribution
-
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
-the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without
-any additional terms or conditions.
+MIT.
