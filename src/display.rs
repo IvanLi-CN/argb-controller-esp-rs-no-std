@@ -11,7 +11,7 @@ use embedded_graphics::prelude::*;
 use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle, RoundedRectangle};
 use embedded_graphics::text::TextStyle;
 use embedded_graphics::{
-    mono_font::{mapping::StrGlyphMapping, DecorationDimensions, MonoFont, MonoTextStyle},
+    mono_font::MonoTextStyle,
     text::{Alignment, Baseline, Text, TextStyleBuilder},
 };
 use hal::dma::Channel0;
@@ -34,16 +34,6 @@ pub(crate) type DisplayST7735 = ST7735<
     GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 7>,
     GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 8>,
 >;
-
-const SEVENT_SEGMENT_FONT: MonoFont = MonoFont {
-    image: ImageRaw::new(include_bytes!("./assets/seven-segment-font.raw"), 224),
-    glyph_mapping: &StrGlyphMapping::new("0123456789", 0),
-    character_size: Size::new(22, 40),
-    character_spacing: 4,
-    baseline: 7,
-    underline: DecorationDimensions::default_underline(40),
-    strikethrough: DecorationDimensions::default_strikethrough(40),
-};
 
 #[embassy_executor::task]
 pub(crate) async fn init_display(display: &'static mut DisplayST7735) {

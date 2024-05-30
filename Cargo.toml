@@ -43,9 +43,9 @@ embedded-graphics = "0.8.1"
 embassy-embedded-hal = "0.1.0"
 embassy-sync = "0.5.0"
 
-static_cell = { version = "2.0.0", features = ["nightly"] }
-reqwless = "0.11.0"
+static_cell = { version = "2.1.0", features = ["nightly"] }
+reqwless = "0.12.0"
 heapless = { version = "0.8.0", features = ["serde"] }
-serde = { version = "1.0.197", default-features = false, features = ["derive"] }
+serde = { version = "1.0.203", default-features = false, features = ["derive"] }
 st7735 = { path = "./st7735" }
 numtoa = "0.2.4"
