@@ -12,46 +12,46 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
 use esp_backtrace as _;
+use esp_hal_embassy;
 use esp_println::println;
 use esp_wifi::wifi::WifiStaDevice;
 use esp_wifi::{initialize, EspWifiInitFor};
-use hal::dma::{Channel0, Dma};
 use hal::dma::DmaPriority;
-use hal::rng::Rng;
-use hal::{dma_descriptors, Async};
-use hal::gpio::IO;
+use hal::dma::{Channel0, Dma};
+use hal::gpio::{Io, Output};
 use hal::peripherals::SPI2;
+use hal::rng::Rng;
 use hal::spi::master::dma::SpiDma;
 use hal::spi::FullDuplexMode;
+use hal::system::SystemControl;
+use hal::timer::systimer::SystemTimer;
+use hal::timer::timg::TimerGroup;
 use hal::{
     clock::{self, ClockControl},
-    embassy,
-    gpio::{GpioPin, Unknown},
-    peripheral::Peripheral,
+    gpio::GpioPin,
     peripherals::Peripherals,
     prelude::*,
     spi::{
         master::{prelude::*, Spi},
         SpiMode,
     },
-    timer::TimerGroup,
 };
+use hal::{dma_descriptors, Async};
 use st7735::ST7735;
 use static_cell::make_static;
 
 use embassy_net::{Config, Stack, StackResources};
 mod bus;
 mod display;
-mod wifi;
 mod udp_client;
+mod wifi;
 use wifi::{connection, get_ip_addr, net_task};
 
 use esp_backtrace as _;
 
 use crate::udp_client::receiving_net_speed;
 #[embassy_executor::task]
-async fn blink(blink_led: &'static mut GpioPin<Unknown, 1>) {
-    let mut blink_led = unsafe { blink_led.clone_unchecked() }.into_push_pull_output();
+async fn blink(blink_led: &'static mut Output<'static, GpioPin<1>>) {
     blink_led.set_high();
 
     loop {
@@ -67,17 +67,20 @@ async fn main(spawner: Spawner) {
     // Basic stuff
 
     let peripherals = Peripherals::take();
-    let system = peripherals.SYSTEM.split();
+    let system = SystemControl::new(peripherals.SYSTEM);
     let clocks: clock::Clocks<'static> = ClockControl::max(system.clock_control).freeze();
-     let timg0 = TimerGroup::new_async(peripherals.TIMG0, &clocks);
+    let timg0 = TimerGroup::new_async(peripherals.TIMG0, &clocks);
 
-    let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
+    let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
 
-    let blink_led: &'static mut GpioPin<Unknown, 1> = make_static!(io.pins.gpio1);
+    let blink_led = Output::new(io.pins.gpio1, hal::gpio::Level::High);
 
-    embassy::init(&clocks, timg0);
+    let blink_led: &'static mut Output<'static, GpioPin<1>> =
+        make_static!(blink_led);
 
-    let timer = hal::systimer::SystemTimer::new(peripherals.SYSTIMER).alarm0;
+    esp_hal_embassy::init(&clocks, timg0);
+
+    let timer = SystemTimer::new(peripherals.SYSTIMER).alarm0;
 
     // Wi-Fi
 
@@ -85,7 +88,7 @@ async fn main(spawner: Spawner) {
         EspWifiInitFor::Wifi,
         timer,
         Rng::new(peripherals.RNG),
-        system.radio_clock_control,
+        peripherals.RADIO_CLK,
         &clocks,
     )
     .unwrap();
@@ -102,7 +105,7 @@ async fn main(spawner: Spawner) {
         make_static!(StackResources::<3>::new()),
         seed
     ));
-    
+
     // DMA
 
     let dma = Dma::new(peripherals.DMA);
@@ -110,9 +113,9 @@ async fn main(spawner: Spawner) {
 
     // SPI
 
-    let sdo = io.pins.gpio5.into_push_pull_output();
-    let sck = io.pins.gpio6.into_push_pull_output();
-    let (tx_descriptors,  rx_descriptors) = dma_descriptors!(32000, 4096);
+    let sdo = io.pins.gpio5;
+    let sck = io.pins.gpio6;
+    let (tx_descriptors, rx_descriptors) = dma_descriptors!(32000, 4096);
     let tx_descriptors = make_static!(tx_descriptors);
     let rx_descriptors = make_static!(rx_descriptors);
 
@@ -131,14 +134,14 @@ async fn main(spawner: Spawner) {
 
     // Display
 
-    let dc = io.pins.gpio7.into_push_pull_output();
-    let rst = io.pins.gpio8.into_push_pull_output();
-    let lcd_cs = io.pins.gpio9.into_push_pull_output();
+    let dc = Output::new(io.pins.gpio7, hal::gpio::Level::High);
+    let rst = Output::new(io.pins.gpio8, hal::gpio::Level::High);
+    let lcd_cs = Output::new(io.pins.gpio9, hal::gpio::Level::High);
     let spi_dev: SpiDevice<
         '_,
         NoopRawMutex,
         _,
-        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 9>,
+        Output<GpioPin<9>>,
     > = SpiDevice::new(spi, lcd_cs);
 
     let width = 160;
@@ -150,10 +153,10 @@ async fn main(spawner: Spawner) {
             '_,
             NoopRawMutex,
             SpiDma<'static, SPI2, Channel0, FullDuplexMode, Async>,
-            GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 9>,
+            Output<GpioPin<9>>,
         >,
-        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 7>,
-        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 8>,
+        Output<GpioPin<7>>,
+        Output<GpioPin<8>>,
     > = ST7735::new(
         spi_dev,
         dc,

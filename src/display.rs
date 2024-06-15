@@ -15,7 +15,7 @@ use embedded_graphics::{
     text::{Alignment, Baseline, Text, TextStyleBuilder},
 };
 use hal::dma::Channel0;
-use hal::gpio::GpioPin;
+use hal::gpio::{GpioPin, Output};
 use hal::peripherals::SPI2;
 use hal::spi::master::dma::SpiDma;
 use hal::spi::FullDuplexMode;
@@ -29,10 +29,10 @@ pub(crate) type DisplayST7735 = ST7735<
         'static,
         NoopRawMutex,
         SpiDma<'static, SPI2, Channel0, FullDuplexMode, Async>,
-        GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 9>,
+        Output<'static, GpioPin<9>>,
     >,
-    GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 7>,
-    GpioPin<hal::gpio::Output<hal::gpio::PushPull>, 8>,
+    Output<'static, GpioPin<7>>,
+    Output<'static, GpioPin<8>>,
 >;
 
 #[embassy_executor::task]
