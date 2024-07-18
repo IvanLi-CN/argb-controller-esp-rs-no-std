@@ -25,6 +25,7 @@ use hal::spi::FullDuplexMode;
 use hal::system::SystemControl;
 use hal::timer::systimer::SystemTimer;
 use hal::timer::timg::TimerGroup;
+use hal::timer::{OneShotTimer, PeriodicTimer};
 use hal::{
     clock::{self, ClockControl},
     gpio::GpioPin,
@@ -68,18 +69,23 @@ async fn main(spawner: Spawner) {
     let peripherals = Peripherals::take();
     let system = SystemControl::new(peripherals.SYSTEM);
     let clocks: clock::Clocks<'static> = ClockControl::max(system.clock_control).freeze();
-    let timg0 = TimerGroup::new_async(peripherals.TIMG0, &clocks);
+    let systimer = SystemTimer::new(peripherals.SYSTIMER);
+    let timer0 = OneShotTimer::new(systimer.alarm0.into());
+    let timers = [timer0];
+    let timers = make_static!(timers);
+    esp_hal_embassy::init(&clocks, timers);
 
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
 
     let blink_led = Output::new(io.pins.gpio1, hal::gpio::Level::High);
 
-    let blink_led: &'static mut Output<'static, GpioPin<1>> =
-        make_static!(blink_led);
+    let blink_led: &'static mut Output<'static, GpioPin<1>> = make_static!(blink_led);
 
-    esp_hal_embassy::init(&clocks, timg0);
-
-    let timer = SystemTimer::new(peripherals.SYSTIMER).alarm0;
+    let timer = PeriodicTimer::new(
+        TimerGroup::new(peripherals.TIMG0, &clocks, None)
+            .timer0
+            .into(),
+    );
 
     // Wi-Fi
 
@@ -115,19 +121,17 @@ async fn main(spawner: Spawner) {
     let sdo = io.pins.gpio5;
     let sck = io.pins.gpio6;
     let (tx_descriptors, rx_descriptors) = dma_descriptors!(32000, 4096);
-    let tx_descriptors = make_static!(tx_descriptors);
-    let rx_descriptors = make_static!(rx_descriptors);
 
     let spi: SpiDma<'_, SPI2, Channel0, FullDuplexMode, Async> =
         Spi::new(peripherals.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks)
             .with_sck(sck)
             .with_mosi(sdo)
-            .with_dma(dma_channel.configure_for_async(
-                false,
+            .with_dma(
+                dma_channel
+                    .configure_for_async(false, DmaPriority::Priority0),
                 tx_descriptors,
                 rx_descriptors,
-                DmaPriority::Priority0,
-            ));
+            );
     let spi: Mutex<NoopRawMutex, _> = Mutex::new(spi);
     let spi = make_static!(spi);
 
@@ -136,12 +140,7 @@ async fn main(spawner: Spawner) {
     let dc = Output::new(io.pins.gpio7, hal::gpio::Level::High);
     let rst = Output::new(io.pins.gpio8, hal::gpio::Level::High);
     let lcd_cs = Output::new(io.pins.gpio9, hal::gpio::Level::High);
-    let spi_dev: SpiDevice<
-        '_,
-        NoopRawMutex,
-        _,
-        Output<GpioPin<9>>,
-    > = SpiDevice::new(spi, lcd_cs);
+    let spi_dev: SpiDevice<'_, NoopRawMutex, _, Output<GpioPin<9>>> = SpiDevice::new(spi, lcd_cs);
 
     let width = 160;
     let height = 80;

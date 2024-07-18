@@ -6,23 +6,22 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-hal = { package = "esp-hal", version = "0.18.0", features = [
+hal = { package = "esp-hal", version = "0.19.0", features = [
   "esp32c3",
   "async",
 ] }
-esp-hal-embassy = { version = "0.1.0", features = [
+esp-hal-embassy = { version = "0.2.0", features = [
   "esp32c3",
-  "time-timg0",
   "integrated-timers",
 ] }
-esp-backtrace = { version = "0.12.0", features = [
+esp-backtrace = { version = "0.13.0", features = [
   "esp32c3",
   "panic-handler",
   "exception-handler",
   "println",
 ] }
-esp-println = { version = "0.9.1", features = ["esp32c3"] }
-esp-wifi = { version = "0.6.0", features = [
+esp-println = { version = "0.10.0", features = ["esp32c3"] }
+esp-wifi = { version = "0.7.1", features = [
   "esp32c3",
   "async",
   "wifi",
@@ -44,7 +43,7 @@ embassy-embedded-hal = "0.1.0"
 embassy-sync = "0.5.0"
 
 static_cell = { version = "2.1.0", features = ["nightly"] }
-reqwless = "0.12.0"
+reqwless = "0.12.1"
 heapless = { version = "0.8.0", features = ["serde"] }
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }
 st7735 = { path = "./st7735" }
