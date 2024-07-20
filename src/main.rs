@@ -15,18 +15,15 @@ use esp_backtrace as _;
 use esp_println::println;
 use esp_wifi::wifi::WifiStaDevice;
 use esp_wifi::{initialize, EspWifiInitFor};
-use hal::dma::DmaPriority;
-use hal::dma::{Channel0, Dma};
-use hal::gpio::{Io, Output};
-use hal::peripherals::SPI2;
-use hal::rng::Rng;
-use hal::spi::master::dma::SpiDma;
-use hal::spi::FullDuplexMode;
-use hal::system::SystemControl;
-use hal::timer::systimer::SystemTimer;
-use hal::timer::timg::TimerGroup;
-use hal::timer::{OneShotTimer, PeriodicTimer};
-use hal::{
+use esp_hal::dma::DmaPriority;
+use esp_hal::dma::Dma;
+use esp_hal::gpio::{Io, Output};
+use esp_hal::rng::Rng;
+use esp_hal::system::SystemControl;
+use esp_hal::timer::systimer::SystemTimer;
+use esp_hal::timer::timg::TimerGroup;
+use esp_hal::timer::{OneShotTimer, PeriodicTimer};
+use esp_hal::{
     clock::{self, ClockControl},
     gpio::GpioPin,
     peripherals::Peripherals,
@@ -36,7 +33,7 @@ use hal::{
         SpiMode,
     },
 };
-use hal::{dma_descriptors, Async};
+use esp_hal::dma_descriptors;
 use st7735::ST7735;
 use static_cell::make_static;
 
@@ -77,7 +74,7 @@ async fn main(spawner: Spawner) {
 
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
 
-    let blink_led = Output::new(io.pins.gpio1, hal::gpio::Level::High);
+    let blink_led = Output::new(io.pins.gpio1, esp_hal::gpio::Level::High);
 
     let blink_led: &'static mut Output<'static, GpioPin<1>> = make_static!(blink_led);
 
@@ -118,14 +115,16 @@ async fn main(spawner: Spawner) {
 
     // SPI
 
-    let sdo = io.pins.gpio5;
+    let miso = io.pins.gpio4;
+    let sda = io.pins.gpio5;
     let sck = io.pins.gpio6;
     let (tx_descriptors, rx_descriptors) = dma_descriptors!(32000, 4096);
 
-    let spi: SpiDma<'_, SPI2, Channel0, FullDuplexMode, Async> =
+    let spi =
         Spi::new(peripherals.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks)
             .with_sck(sck)
-            .with_mosi(sdo)
+            .with_mosi(sda)
+            .with_miso(miso)
             .with_dma(
                 dma_channel
                     .configure_for_async(false, DmaPriority::Priority0),
@@ -137,25 +136,16 @@ async fn main(spawner: Spawner) {
 
     // Display
 
-    let dc = Output::new(io.pins.gpio7, hal::gpio::Level::High);
-    let rst = Output::new(io.pins.gpio8, hal::gpio::Level::High);
-    let lcd_cs = Output::new(io.pins.gpio9, hal::gpio::Level::High);
+    let dc = Output::new(io.pins.gpio7, esp_hal::gpio::Level::High);
+    let rst = Output::new(io.pins.gpio8, esp_hal::gpio::Level::High);
+    let lcd_cs = Output::new(io.pins.gpio9, esp_hal::gpio::Level::High);
     let spi_dev: SpiDevice<'_, NoopRawMutex, _, Output<GpioPin<9>>> = SpiDevice::new(spi, lcd_cs);
 
     let width = 160;
     let height = 80;
 
     println!("lcd init...");
-    let display: ST7735<
-        SpiDevice<
-            '_,
-            NoopRawMutex,
-            SpiDma<'static, SPI2, Channel0, FullDuplexMode, Async>,
-            Output<GpioPin<9>>,
-        >,
-        Output<GpioPin<7>>,
-        Output<GpioPin<8>>,
-    > = ST7735::new(
+    let display = ST7735::new(
         spi_dev,
         dc,
         rst,

@@ -1,50 +1,51 @@
 [package]
-name = "network-monitor-esp-rs-no-std"
-version = "0.1.0"
 authors = ["Ivan Li <ivanli2048@gmail.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
+name = "network-monitor-esp-rs-no-std"
+version = "0.1.0"
 
 [dependencies]
-hal = { package = "esp-hal", version = "0.19.0", features = [
-  "esp32c3",
-  "async",
-] }
-esp-hal-embassy = { version = "0.2.0", features = [
-  "esp32c3",
-  "integrated-timers",
-] }
-esp-backtrace = { version = "0.13.0", features = [
+esp-backtrace = {version = "0.13.0", features = [
   "esp32c3",
   "panic-handler",
   "exception-handler",
   "println",
-] }
-esp-println = { version = "0.10.0", features = ["esp32c3"] }
-esp-wifi = { version = "0.7.1", features = [
+]}
+esp-hal = {version = "0.19.0", features = [
+  "esp32c3",
+  "async",
+]}
+esp-hal-embassy = {version = "0.2.0", features = [
+  "esp32c3",
+  "integrated-timers",
+]}
+esp-println = {version = "0.10.0", features = ["esp32c3"]}
+esp-wifi = {version = "0.7.1", features = [
   "esp32c3",
   "async",
   "wifi",
   "dhcpv4",
   "embassy-net",
-] }
+]}
 
-embassy-executor = { version = "0.5.0", features = ["nightly"] }
-embassy-time = { version = "0.3.0", features = [] }
-embassy-net = { version = "0.4.0", features = [
+embassy-embedded-hal = "0.1.0"
+embassy-executor = {version = "0.5.0", features = ["nightly"]}
+embassy-futures = "0.1.1"
+embassy-net = {version = "0.4.0", features = [
   "dhcpv4",
   "udp",
   "dns",
   "medium-ethernet",
-] }
-embedded-io-async = { version = "0.6.1" }
-embedded-graphics = "0.8.1"
-embassy-embedded-hal = "0.1.0"
+]}
 embassy-sync = "0.5.0"
+embassy-time = {version = "0.3.0", features = []}
+embedded-graphics = "0.8.1"
+embedded-io-async = {version = "0.6.1"}
 
-static_cell = { version = "2.1.0", features = ["nightly"] }
-reqwless = "0.12.1"
-heapless = { version = "0.8.0", features = ["serde"] }
-serde = { version = "1.0.203", default-features = false, features = ["derive"] }
-st7735 = { path = "./st7735" }
+heapless = {version = "0.8.0", features = ["serde"]}
 numtoa = "0.2.4"
+reqwless = "0.12.1"
+serde = {version = "1.0.203", default-features = false, features = ["derive"]}
+st7735 = {path = "./st7735"}
+static_cell = {version = "2.1.0", features = ["nightly"]}

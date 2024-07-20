@@ -1,9 +1,10 @@
 use crate::bus::{NetSpeed, WiFiConnectStatus, NET_SPEED, WIFI_CONNECT_STATUS};
 use core::future::Future;
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_futures::select::select;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Delay, Instant, Timer};
+use embassy_time::{Delay, Duration, Instant, Ticker, Timer};
 use embedded_graphics::image::{Image, ImageRaw, ImageRawLE};
 use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_graphics::pixelcolor::{Rgb565, Rgb888};
@@ -14,12 +15,12 @@ use embedded_graphics::{
     mono_font::MonoTextStyle,
     text::{Alignment, Baseline, Text, TextStyleBuilder},
 };
-use hal::dma::Channel0;
-use hal::gpio::{GpioPin, Output};
-use hal::peripherals::SPI2;
-use hal::spi::master::dma::SpiDma;
-use hal::spi::FullDuplexMode;
-use hal::Async;
+use esp_hal::dma::Channel0;
+use esp_hal::gpio::{GpioPin, Output};
+use esp_hal::peripherals::SPI2;
+use esp_hal::spi::master::dma::SpiDma;
+use esp_hal::spi::FullDuplexMode;
+use esp_hal::Async;
 use heapless::String;
 use st7735::ST7735;
 use static_cell::make_static;
@@ -37,28 +38,33 @@ pub(crate) type DisplayST7735 = ST7735<
 
 #[embassy_executor::task]
 pub(crate) async fn init_display(display: &'static mut DisplayST7735) {
-    let mut gui: GUI<'static> = GUI::new(display);
-
-    gui.init().await;
-
-    let gui = make_static!(Mutex::<NoopRawMutex, GUI<'static>>::new(gui));
-
-    let mut wifi_status: WiFiConnectStatus;
-
     loop {
-        let wifi_status_guard = WIFI_CONNECT_STATUS.lock().await;
-        wifi_status = *wifi_status_guard;
-        drop(wifi_status_guard);
+        let mut gui: GUI<'static> = GUI::new(display);
 
-        let mut gui = gui.lock().await;
-        match wifi_status {
-            WiFiConnectStatus::Connecting => gui.wifi_connecting_display().await,
-            WiFiConnectStatus::Connected => gui.network_speed().await,
-            _ => {}
-        };
-        drop(gui);
+        gui.init().await;
 
-        Timer::after_millis(10).await;
+        let gui = make_static!(Mutex::<CriticalSectionRawMutex, GUI<'static>>::new(gui));
+
+        let mut wifi_status: WiFiConnectStatus;
+
+        loop {
+            let wifi_status_guard = WIFI_CONNECT_STATUS.lock().await;
+            wifi_status = *wifi_status_guard;
+            drop(wifi_status_guard);
+
+            let mut gui = gui.lock().await;
+            match wifi_status {
+                WiFiConnectStatus::Connecting => gui.wifi_connecting_display().await,
+                WiFiConnectStatus::Connected => match gui.network_speed().await {
+                    Ok(_) => {}
+                    Err(_) => {
+                        continue;
+                    }
+                },
+                _ => {}
+            };
+            drop(gui);
+        }
     }
 }
 
@@ -112,7 +118,7 @@ impl<'a> GUI<'a> {
         }
     }
 
-    pub async fn network_speed(&mut self) {
+    pub async fn network_speed(&mut self) -> Result<(), ()> {
         if !matches!(self.page, DisplayPage::NetworkSpeed(_)) {
             self.page = DisplayPage::NetworkSpeed(NetDataTrafficSpeedPage::new());
         }
@@ -120,6 +126,8 @@ impl<'a> GUI<'a> {
         if let DisplayPage::NetworkSpeed(ref mut page) = self.page {
             page.frame(&mut self.display).await;
         }
+
+        Ok(())
     }
 }
 
@@ -389,6 +397,7 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
             .unwrap();
         }
 
-        display.flush().await.unwrap();
+        let mut ticker = Ticker::every(Duration::from_millis(100));
+        select(ticker.next(), display.flush()).await;
     }
 }
