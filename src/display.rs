@@ -30,7 +30,7 @@ pub(crate) type DisplayST7735 = ST7735<
         'static,
         NoopRawMutex,
         SpiDma<'static, SPI2, Channel0, FullDuplexMode, Async>,
-        Output<'static, GpioPin<9>>,
+        Output<'static, GpioPin<10>>,
     >,
     Output<'static, GpioPin<7>>,
     Output<'static, GpioPin<8>>,

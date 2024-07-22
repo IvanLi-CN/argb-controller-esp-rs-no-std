@@ -12,6 +12,7 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
 use esp_backtrace as _;
+use esp_hal::ledc::{self, LSGlobalClkSource, Ledc, LowSpeed};
 use esp_println::println;
 use esp_wifi::wifi::WifiStaDevice;
 use esp_wifi::{initialize, EspWifiInitFor};
@@ -115,7 +116,6 @@ async fn main(spawner: Spawner) {
 
     // SPI
 
-    let miso = io.pins.gpio4;
     let sda = io.pins.gpio5;
     let sck = io.pins.gpio6;
     let (tx_descriptors, rx_descriptors) = dma_descriptors!(32000, 4096);
@@ -124,10 +124,8 @@ async fn main(spawner: Spawner) {
         Spi::new(peripherals.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks)
             .with_sck(sck)
             .with_mosi(sda)
-            .with_miso(miso)
             .with_dma(
-                dma_channel
-                    .configure_for_async(false, DmaPriority::Priority0),
+                dma_channel.configure_for_async(false, DmaPriority::Priority0),
                 tx_descriptors,
                 rx_descriptors,
             );
@@ -138,8 +136,8 @@ async fn main(spawner: Spawner) {
 
     let dc = Output::new(io.pins.gpio7, esp_hal::gpio::Level::High);
     let rst = Output::new(io.pins.gpio8, esp_hal::gpio::Level::High);
-    let lcd_cs = Output::new(io.pins.gpio9, esp_hal::gpio::Level::High);
-    let spi_dev: SpiDevice<'_, NoopRawMutex, _, Output<GpioPin<9>>> = SpiDevice::new(spi, lcd_cs);
+    let lcd_cs = Output::new(io.pins.gpio10, esp_hal::gpio::Level::High);
+    let spi_dev = SpiDevice::new(spi, lcd_cs);
 
     let width = 160;
     let height = 80;
@@ -159,6 +157,31 @@ async fn main(spawner: Spawner) {
     );
     let display = make_static!(display);
 
+    let blk_pin = io.pins.gpio4;
+
+    let mut ledc = Ledc::new(peripherals.LEDC, &clocks);
+
+    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+
+    let mut lstimer0 = ledc.get_timer::<LowSpeed>(ledc::timer::Number::Timer1);
+
+    lstimer0
+        .configure(ledc::timer::config::Config {
+            duty: ledc::timer::config::Duty::Duty5Bit,
+            clock_source: ledc::timer::LSClockSource::APBClk,
+            frequency: 256.kHz(),
+        })
+        .unwrap();
+
+    let mut channel0 = ledc.get_channel(ledc::channel::Number::Channel0, blk_pin);
+    channel0
+        .configure(ledc::channel::config::Config {
+            timer: &lstimer0,
+            duty_pct: 20,
+            pin_config: ledc::channel::config::PinConfig::PushPull,
+        })
+        .unwrap();
+
     spawner.spawn(display::init_display(display)).ok();
     spawner.spawn(blink(blink_led)).ok();
     spawner.spawn(connection(controller)).ok();
@@ -168,5 +191,9 @@ async fn main(spawner: Spawner) {
 
     loop {
         Timer::after(Duration::from_millis(1000)).await;
+        // channel0.start_duty_fade(0, 100, 1000).unwrap();
+        // while channel0.is_duty_fade_running() {}
+        // channel0.start_duty_fade(100, 0, 1000).unwrap();
+        // while channel0.is_duty_fade_running() {}
     }
 }
