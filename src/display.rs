@@ -397,7 +397,7 @@ impl<'a> GUIPageFrame for NetDataTrafficSpeedPage<'a> {
             .unwrap();
         }
 
-        let mut ticker = Ticker::every(Duration::from_millis(100));
+        let mut ticker = Ticker::every(Duration::from_millis(20));
         select(ticker.next(), display.flush()).await;
     }
 }
