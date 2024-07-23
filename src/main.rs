@@ -12,13 +12,11 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
 use esp_backtrace as _;
-use esp_hal::ledc::{self, LSGlobalClkSource, Ledc, LowSpeed};
-use esp_println::println;
-use esp_wifi::wifi::WifiStaDevice;
-use esp_wifi::{initialize, EspWifiInitFor};
-use esp_hal::dma::DmaPriority;
 use esp_hal::dma::Dma;
+use esp_hal::dma::DmaPriority;
+use esp_hal::dma_descriptors;
 use esp_hal::gpio::{Io, Output};
+use esp_hal::ledc::{self, LSGlobalClkSource, Ledc, LowSpeed};
 use esp_hal::rng::Rng;
 use esp_hal::system::SystemControl;
 use esp_hal::timer::systimer::SystemTimer;
@@ -26,7 +24,6 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_hal::timer::{OneShotTimer, PeriodicTimer};
 use esp_hal::{
     clock::{self, ClockControl},
-    gpio::GpioPin,
     peripherals::Peripherals,
     prelude::*,
     spi::{
@@ -34,7 +31,9 @@ use esp_hal::{
         SpiMode,
     },
 };
-use esp_hal::dma_descriptors;
+use esp_println::println;
+use esp_wifi::wifi::WifiStaDevice;
+use esp_wifi::{initialize, EspWifiInitFor};
 use st7735::ST7735;
 use static_cell::make_static;
 
@@ -48,15 +47,6 @@ use wifi::{connection, get_ip_addr, net_task};
 use esp_backtrace as _;
 
 use crate::udp_client::receiving_net_speed;
-#[embassy_executor::task]
-async fn blink(blink_led: &'static mut Output<'static, GpioPin<1>>) {
-    blink_led.set_high();
-
-    loop {
-        blink_led.toggle();
-        Timer::after(Duration::from_millis(5_00)).await;
-    }
-}
 
 #[main]
 async fn main(spawner: Spawner) {
@@ -65,6 +55,12 @@ async fn main(spawner: Spawner) {
     // Basic stuff
 
     let peripherals = Peripherals::take();
+
+    let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
+
+    let mut blk_pin = io.pins.gpio4;
+    blk_pin.set_high();
+
     let system = SystemControl::new(peripherals.SYSTEM);
     let clocks: clock::Clocks<'static> = ClockControl::max(system.clock_control).freeze();
     let systimer = SystemTimer::new(peripherals.SYSTIMER);
@@ -72,12 +68,6 @@ async fn main(spawner: Spawner) {
     let timers = [timer0];
     let timers = make_static!(timers);
     esp_hal_embassy::init(&clocks, timers);
-
-    let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
-
-    let blink_led = Output::new(io.pins.gpio1, esp_hal::gpio::Level::High);
-
-    let blink_led: &'static mut Output<'static, GpioPin<1>> = make_static!(blink_led);
 
     let timer = PeriodicTimer::new(
         TimerGroup::new(peripherals.TIMG0, &clocks, None)
@@ -120,15 +110,14 @@ async fn main(spawner: Spawner) {
     let sck = io.pins.gpio6;
     let (tx_descriptors, rx_descriptors) = dma_descriptors!(32000, 4096);
 
-    let spi =
-        Spi::new(peripherals.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks)
-            .with_sck(sck)
-            .with_mosi(sda)
-            .with_dma(
-                dma_channel.configure_for_async(false, DmaPriority::Priority0),
-                tx_descriptors,
-                rx_descriptors,
-            );
+    let spi = Spi::new(peripherals.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks)
+        .with_sck(sck)
+        .with_mosi(sda)
+        .with_dma(
+            dma_channel.configure_for_async(false, DmaPriority::Priority0),
+            tx_descriptors,
+            rx_descriptors,
+        );
     let spi: Mutex<NoopRawMutex, _> = Mutex::new(spi);
     let spi = make_static!(spi);
 
@@ -157,8 +146,6 @@ async fn main(spawner: Spawner) {
     );
     let display = make_static!(display);
 
-    let blk_pin = io.pins.gpio4;
-
     let mut ledc = Ledc::new(peripherals.LEDC, &clocks);
 
     ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
@@ -169,7 +156,7 @@ async fn main(spawner: Spawner) {
         .configure(ledc::timer::config::Config {
             duty: ledc::timer::config::Duty::Duty5Bit,
             clock_source: ledc::timer::LSClockSource::APBClk,
-            frequency: 256.kHz(),
+            frequency: 512.kHz(),
         })
         .unwrap();
 
@@ -177,23 +164,26 @@ async fn main(spawner: Spawner) {
     channel0
         .configure(ledc::channel::config::Config {
             timer: &lstimer0,
-            duty_pct: 20,
+            duty_pct: 0,
             pin_config: ledc::channel::config::PinConfig::PushPull,
         })
         .unwrap();
 
     spawner.spawn(display::init_display(display)).ok();
-    spawner.spawn(blink(blink_led)).ok();
+    // spawner.spawn(blink(blink_led)).ok();
     spawner.spawn(connection(controller)).ok();
     spawner.spawn(net_task(&stack)).ok();
     spawner.spawn(get_ip_addr(&stack)).ok();
     spawner.spawn(receiving_net_speed(&stack)).ok();
 
+    Timer::after(Duration::from_millis(500)).await;
+    // blk 0 to 50 fade
+    for i in 0..50 {
+        channel0.set_duty(i).unwrap();
+        Timer::after(Duration::from_millis((60 - i) as u64)).await;
+    }
+
     loop {
         Timer::after(Duration::from_millis(1000)).await;
-        // channel0.start_duty_fade(0, 100, 1000).unwrap();
-        // while channel0.is_duty_fade_running() {}
-        // channel0.start_duty_fade(100, 0, 1000).unwrap();
-        // while channel0.is_duty_fade_running() {}
     }
 }
