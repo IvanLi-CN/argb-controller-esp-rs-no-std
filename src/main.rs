@@ -6,17 +6,21 @@
 #![feature(const_mut_refs)]
 #![feature(int_roundings)]
 
-use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
+use core::ops::Div;
+
+use argb::ARGBError;
+use argb::ARGB;
 use embassy_executor::Spawner;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, Timer};
+use embassy_time::Duration;
+use embassy_time::Instant;
+use embassy_time::Ticker;
 use esp_backtrace as _;
 use esp_hal::dma::Dma;
-use esp_hal::dma::DmaPriority;
-use esp_hal::dma_descriptors;
-use esp_hal::gpio::{Io, Output};
-use esp_hal::ledc::{self, LSGlobalClkSource, Ledc, LowSpeed};
+use esp_hal::gpio::Io;
+use esp_hal::rmt::Rmt;
+use esp_hal::rmt::TxChannel;
+use esp_hal::rmt::TxChannelConfig;
+use esp_hal::rmt::TxChannelCreator;
 use esp_hal::rng::Rng;
 use esp_hal::system::SystemControl;
 use esp_hal::timer::systimer::SystemTimer;
@@ -26,40 +30,34 @@ use esp_hal::{
     clock::{self, ClockControl},
     peripherals::Peripherals,
     prelude::*,
-    spi::{
-        master::{prelude::*, Spi},
-        SpiMode,
-    },
 };
 use esp_println::println;
 use esp_wifi::wifi::WifiStaDevice;
 use esp_wifi::{initialize, EspWifiInitFor};
-use st7735::ST7735;
+use palette::Hsl;
+use palette::SetHue;
+use palette::Srgb;
 use static_cell::make_static;
 
 use embassy_net::{Config, Stack, StackResources};
+mod argb;
 mod bus;
-mod display;
 mod udp_client;
 mod wifi;
+use palette::IntoColor;
 use wifi::{connection, get_ip_addr, net_task};
 
 use esp_backtrace as _;
 
-use crate::udp_client::receiving_net_speed;
-
 #[main]
 async fn main(spawner: Spawner) {
-    esp_println::println!("Init main");
-
     // Basic stuff
 
     let peripherals = Peripherals::take();
 
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
 
-    let mut blk_pin = io.pins.gpio4;
-    blk_pin.set_high();
+    let rmt_pin = io.pins.gpio4;
 
     let system = SystemControl::new(peripherals.SYSTEM);
     let clocks: clock::Clocks<'static> = ClockControl::max(system.clock_control).freeze();
@@ -104,86 +102,81 @@ async fn main(spawner: Spawner) {
     let dma = Dma::new(peripherals.DMA);
     let dma_channel = dma.channel0;
 
-    // SPI
+    // RMT
 
-    let sda = io.pins.gpio5;
-    let sck = io.pins.gpio6;
-    let (tx_descriptors, rx_descriptors) = dma_descriptors!(32000, 4096);
+    let rmt = Rmt::new(peripherals.RMT, 80.MHz(), &clocks, None).unwrap();
 
-    let spi = Spi::new(peripherals.SPI2, 40u32.MHz(), SpiMode::Mode0, &clocks)
-        .with_sck(sck)
-        .with_mosi(sda)
-        .with_dma(
-            dma_channel.configure_for_async(false, DmaPriority::Priority0),
-            tx_descriptors,
-            rx_descriptors,
-        );
-    let spi: Mutex<NoopRawMutex, _> = Mutex::new(spi);
-    let spi = make_static!(spi);
+    let channel = rmt
+        .channel0
+        .configure(
+            rmt_pin,
+            TxChannelConfig {
+                clk_divider: 1,
+                idle_output_level: false,
+                carrier_modulation: false,
+                idle_output: true,
 
-    // Display
-
-    let dc = Output::new(io.pins.gpio7, esp_hal::gpio::Level::High);
-    let rst = Output::new(io.pins.gpio8, esp_hal::gpio::Level::High);
-    let lcd_cs = Output::new(io.pins.gpio10, esp_hal::gpio::Level::High);
-    let spi_dev = SpiDevice::new(spi, lcd_cs);
-
-    let width = 160;
-    let height = 80;
-
-    println!("lcd init...");
-    let display = ST7735::new(
-        spi_dev,
-        dc,
-        rst,
-        st7735::Config {
-            rgb: false,
-            inverted: false,
-            orientation: st7735::Orientation::Landscape,
-        },
-        width,
-        height,
-    );
-    let display = make_static!(display);
-
-    let mut ledc = Ledc::new(peripherals.LEDC, &clocks);
-
-    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
-
-    let mut lstimer0 = ledc.get_timer::<LowSpeed>(ledc::timer::Number::Timer1);
-
-    lstimer0
-        .configure(ledc::timer::config::Config {
-            duty: ledc::timer::config::Duty::Duty5Bit,
-            clock_source: ledc::timer::LSClockSource::APBClk,
-            frequency: 512.kHz(),
-        })
+                ..TxChannelConfig::default()
+            },
+        )
         .unwrap();
 
-    let mut channel0 = ledc.get_channel(ledc::channel::Number::Channel0, blk_pin);
-    channel0
-        .configure(ledc::channel::config::Config {
-            timer: &lstimer0,
-            duty_pct: 0,
-            pin_config: ledc::channel::config::PinConfig::PushPull,
-        })
-        .unwrap();
+    let leds_num = 60;
+    let mut buffer = [0u32; 60 * 4 * 8 + 1];
 
-    spawner.spawn(display::init_display(display)).ok();
-    // spawner.spawn(blink(blink_led)).ok();
-    spawner.spawn(connection(controller)).ok();
-    spawner.spawn(net_task(&stack)).ok();
-    spawner.spawn(get_ip_addr(&stack)).ok();
-    spawner.spawn(receiving_net_speed(&stack)).ok();
+    let mut argb = ARGB::new(channel, &clocks);
 
-    Timer::after(Duration::from_millis(500)).await;
-    // blk 0 to 50 fade
-    for i in 0..50 {
-        channel0.set_duty(i).unwrap();
-        Timer::after(Duration::from_millis((60 - i) as u64)).await;
-    }
+    let mut ticker = Ticker::every(Duration::from_millis(16));
+
+    let step_len = 360f64.div(leds_num as f64);
+    let mut h_offset = 0f64;
 
     loop {
-        Timer::after(Duration::from_millis(1000)).await;
+        h_offset = (h_offset + 1f64) % 360f64;
+
+        fill_colors(&argb, &mut buffer, h_offset, step_len).unwrap();
+
+
+        match argb.send(&buffer) {
+            Ok(_) => {
+                println!("RMT success");
+            }
+            Err(err) => {
+                println!("RMT error: {:?}", err);
+            }
+        }
+
+        ticker.next().await;
     }
+}
+
+fn fill_colors<TX: TxChannel>(
+    argb: &ARGB<TX>,
+    buffer: &mut [u32],
+    h_offset: f64,
+    step_len: f64,
+) -> Result<(), ARGBError> {
+    let mut iter = buffer.iter_mut();
+
+    let mut color = Hsl::new(h_offset, 1.0, 0.5);
+
+    for led_index in 0..60 {
+        color.set_hue((led_index as f64) * step_len + h_offset);
+
+        let rgb: Srgb<f64> = color.into_color();
+
+        argb.convert_rgb_channel_to_pulses((rgb.red * 255f64) as u8, &mut iter)
+            .unwrap();
+        argb.convert_rgb_channel_to_pulses((rgb.green * 255f64) as u8, &mut iter)
+            .unwrap();
+        argb.convert_rgb_channel_to_pulses((rgb.blue * 255f64) as u8, &mut iter)
+            .unwrap();
+        argb
+            .convert_rgb_channel_to_pulses(128, &mut iter)
+            .unwrap();
+    }
+
+    *iter.next().ok_or(ARGBError::BufferSizeExceeded)? = 0;
+
+    Ok(())
 }

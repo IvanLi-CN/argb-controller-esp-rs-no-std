@@ -28,6 +28,7 @@ esp-wifi = {version = "0.7.1", features = [
   "dhcpv4",
   "embassy-net",
 ]}
+esp-hal-smartled = {version = "0.12.0", features = ["esp32c3"]}
 
 embassy-embedded-hal = "0.1.0"
 embassy-executor = {version = "0.5.0", features = ["nightly"]}
@@ -47,5 +48,6 @@ heapless = {version = "0.8.0", features = ["serde"]}
 numtoa = "0.2.4"
 reqwless = "0.12.1"
 serde = {version = "1.0.203", default-features = false, features = ["derive"]}
-st7735 = {path = "./st7735"}
 static_cell = {version = "2.1.0", features = ["nightly"]}
+
+palette = { version = "0.7.6", default-features = false, features = ["libm"]}
